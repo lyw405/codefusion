@@ -1,200 +1,228 @@
 # CodeFusion
 
-🚀 CodeFusion - 一个开源的从代码到生产的自动化部署全栈开发协作平台
-A unified open-source platform for code review, API sync, UI generation, and one-click deployment.
+✨ **The Unified Dev Workflow Platform**
 
-## 快速开始
+An open-source platform that connects code review, API configuration, UI generation, and one-click deployment — built for full-stack teams.
 
-### 1. 克隆项目
+🚀 Features:
+
+- 📝 Lightweight CR/PR Management
+- ⚡ One-Click Deploy to Remote Servers
+- 🔗 Visual API Configuration (Frontend & Backend)
+- 🧱 Auto-Generate React/Vue Components
+- 📦 Designed for extensibility (plugins, CLI, API)
+
+🎯 Vision: Make full-stack development collaborative, consistent, and frictionless.
+
+## Quick Start
+
+### 1. Fork and clone the repository
+
+First, fork this repository to your GitHub account, then clone your fork:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/YOUR_USERNAME/codefusion.git
 cd codefusion
 ```
 
-### 2. 安装依赖
+### 2. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-### 3. 设置认证
+### 3. Set up authentication
 
-运行自动设置脚本：
+Run the automatic setup script:
 
 ```bash
 pnpm setup:auth
 ```
 
-或者手动设置：
+Or set up manually:
 
-1. 复制环境变量模板：
+1. Copy the environment variables template:
 
    ```bash
    cp env.example .env
    ```
 
-2. 配置 OAuth 应用：
+2. Configure OAuth applications:
+   - [GitHub OAuth Setup](https://github.com/settings/developers)
+   - [GitLab OAuth Setup](https://gitlab.com/-/profile/applications)
 
-   - [GitHub OAuth 设置](https://github.com/settings/developers)
-   - [GitLab OAuth 设置](https://gitlab.com/-/profile/applications)
+3. Update OAuth configuration in `.env` file
 
-3. 更新 `.env` 文件中的 OAuth 配置
-
-4. 初始化数据库：
+4. Initialize the database:
    ```bash
    pnpm db:generate
    pnpm db:push
    ```
 
-### 4. 启动开发服务器
+### 4. Start the development server
 
 ```bash
 pnpm dev
 ```
 
-访问 [http://localhost:3000](http://localhost:3000) 查看应用。
+Visit [http://localhost:3000](http://localhost:3000) to view the application.
 
-## 认证配置
+## Authentication Configuration
 
-详细的认证设置说明请查看 [AUTH_SETUP.md](./AUTH_SETUP.md)。
+For detailed authentication setup instructions, see [AUTH_SETUP.md](./AUTH_SETUP.md).
 
-### 支持的认证方式
+### Supported authentication methods
 
 - ✅ GitHub OAuth
 - ✅ GitLab OAuth
 
-### 数据库命令
+### Database commands
 
 ```bash
-# 生成 Prisma 客户端
+# Generate Prisma client
 pnpm db:generate
 
-# 推送数据库架构
+# Push database schema
 pnpm db:push
 
-# 打开数据库管理界面
+# Open database management interface
 pnpm db:studio
 
-# 重置数据库
+# Reset database
 pnpm db:reset
 ```
 
-## 开发
+## Development
 
-### 可用脚本
+### Available scripts
 
 ```bash
-# 开发服务器
+# Development server
 pnpm dev
 
-# 构建生产版本
+# Build for production
 pnpm build
 
-# 启动生产服务器
+# Start production server
 pnpm start
 
-# 代码检查
+# Code linting
 pnpm lint
 
-# 类型检查
+# Type checking
 pnpm type-check
 
-# 格式化代码
+# Format code
 pnpm format
 
-# 运行测试
+# Run tests
 pnpm test
 ```
 
-## 技术栈
+## Tech Stack
 
-- **框架**: Next.js 14
-- **认证**: NextAuth.js
-- **数据库**: SQLite + Prisma
+- **Framework**: Next.js 14
+- **Authentication**: NextAuth.js
+- **Database**: SQLite + Prisma
 - **UI**: Radix UI + Tailwind CSS
-- **状态管理**: React Query
+- **State Management**: React Query
 - **AI**: OpenAI, Anthropic, DeepSeek
 
-## 项目结构
+## Project Structure
 
 ```
 codefusion/
 ├── app/                    # Next.js App Router
-│   ├── api/               # API 路由
-│   │   └── auth/          # 认证 API 路由
-│   ├── favicon.ico        # 网站图标
-│   ├── fonts/             # 字体文件
-│   ├── globals.css        # 全局样式
-│   ├── layout.tsx         # 根布局
-│   ├── login/             # 登录页面
-│   ├── main/              # 主应用页面
-│   ├── not-found.tsx      # 404 页面
-│   └── page.tsx           # 根页面
-├── components/            # React 组件
-│   ├── provider/          # 上下文提供者
-│   ├── ui/                # UI 组件库
-│   └── user-menu.tsx      # 用户菜单组件
-├── hooks/                 # 自定义 Hooks
-│   ├── use-mobile.tsx     # 移动端检测 Hook
-│   ├── use-scroll.ts      # 滚动 Hook
-│   └── use-toast.ts       # Toast 通知 Hook
-├── lib/                   # 工具库
-│   ├── auth/              # 认证相关
-│   ├── auth.ts            # NextAuth 配置
-│   ├── db.ts              # 数据库连接
-│   ├── env.ts             # 环境变量
-│   └── utils.ts           # 工具函数
-├── prisma/                # 数据库相关
-│   ├── dev.db             # SQLite 数据库文件
-│   └── schema.prisma      # Prisma 模型定义
-├── public/                # 公共静态文件
-├── scripts/               # 脚本文件
-│   └── setup-auth.sh      # 认证设置脚本
-├── @types/                # TypeScript 类型定义
-├── .eslintrc.json         # ESLint 配置
-├── .gitignore             # Git 忽略文件
-├── .prettierignore        # Prettier 忽略文件
-├── .prettierrc.js         # Prettier 配置
-├── components.json        # shadcn/ui 配置
-├── env.example            # 环境变量模板
-├── next.config.mjs        # Next.js 配置
-├── package.json           # 项目配置
-├── tailwind.config.ts     # Tailwind CSS 配置
-└── tsconfig.json          # TypeScript 配置
+│   ├── api/               # API routes
+│   │   └── auth/          # Authentication API routes
+│   ├── favicon.ico        # Website icon
+│   ├── fonts/             # Font files
+│   ├── globals.css        # Global styles
+│   ├── layout.tsx         # Root layout
+│   ├── login/             # Login page
+│   ├── main/              # Main application pages
+│   ├── not-found.tsx      # 404 page
+│   └── page.tsx           # Root page
+├── components/            # React components
+│   ├── provider/          # Context providers
+│   ├── ui/                # UI component library
+│   └── user-menu.tsx      # User menu component
+├── hooks/                 # Custom Hooks
+│   ├── use-mobile.tsx     # Mobile detection Hook
+│   ├── use-scroll.ts      # Scroll Hook
+│   └── use-toast.ts       # Toast notification Hook
+├── lib/                   # Utility libraries
+│   ├── auth/              # Authentication related
+│   ├── auth.ts            # NextAuth configuration
+│   ├── db.ts              # Database connection
+│   ├── env.ts             # Environment variables
+│   └── utils.ts           # Utility functions
+├── prisma/                # Database related
+│   ├── dev.db             # SQLite database file
+│   └── schema.prisma      # Prisma model definitions
+├── public/                # Public static files
+├── scripts/               # Script files
+│   └── setup-auth.sh      # Authentication setup script
+├── @types/                # TypeScript type definitions
+├── .eslintrc.json         # ESLint configuration
+├── .gitignore             # Git ignore file
+├── .prettierignore        # Prettier ignore file
+├── .prettierrc.js         # Prettier configuration
+├── components.json        # shadcn/ui configuration
+├── env.example            # Environment variables template
+├── next.config.mjs        # Next.js configuration
+├── package.json           # Project configuration
+├── tailwind.config.ts     # Tailwind CSS configuration
+└── tsconfig.json          # TypeScript configuration
 ```
 
-## 贡献
+## Upcoming Features
 
-欢迎提交 Issue 和 Pull Request！
+- **v1.1.0** - Platform page foundation and basic functionality
+- **v1.2.0** - Frontend project automated deployment integration
+- **v1.3.0** - Node.js project automated deployment integration
+- **v1.4.0** - Code collaboration management (PR/CR/MR)
+- **v1.5.0** - Unified frontend-backend API configuration
+- **v1.6.0** - AI-powered component auto-generation
 
-### 开发指南
+## Contributing
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+We welcome Issue submissions and Pull Requests!
 
-### 代码规范
+### Development Guide
 
-- 使用 TypeScript 进行开发
-- 遵循 ESLint 和 Prettier 配置
-- 编写清晰的提交信息
-- 添加必要的测试用例
+1. Fork the project
+2. Clone your forked repository (`git clone https://github.com/YOUR_USERNAME/codefusion.git`)
+3. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+4. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+5. Push to the branch (`git push origin feature/AmazingFeature`)
+6. Open a Pull Request
 
-## 许可证
+### Code Standards
+
+- Use TypeScript for development
+- Follow ESLint and Prettier configurations
+- Write clear commit messages
+- Add necessary test cases
+
+## License
 
 MIT License
 
-## 更新日志
+## Changelog
 
 ### v0.1.0
 
-- 🎉 初始版本发布
-- 🔐 集成 GitHub 和 GitLab OAuth 认证
-- 🎨 基于 shadcn/ui 的现代化 UI 设计
-- 📱 响应式设计和主题切换
-- 🗄️ SQLite 本地数据库支持
-- 🔧 完整的开发工具链配置
-- 🤖 AI 代码生成功能（开发中）
+- 🎉 Initial version release
+- 🔐 Integrated GitHub and GitLab OAuth authentication
+- 🎨 Modern UI design based on shadcn/ui
+- 📱 Responsive design and theme switching
+- 🗄️ SQLite local database support
+- 🔧 Complete development toolchain configuration
+- 🤖 AI code generation features (in development)
+
+---
+
+## 🏷️ Tags
+
+#fullstack #devops #deployment #code-review #api-design #lowcode #component-generator #nextjs #opensource
