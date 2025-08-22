@@ -89,7 +89,32 @@ body {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground transition-colors duration-300;
+  }
+  
+  /* 平滑的主题切换过渡 */
+  html {
+    transition: color-scheme 0.3s ease;
+  }
+  
+  /* 响应式容器 */
+  .container {
+    @apply w-full mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  /* 响应式文本大小 */
+  .responsive-text {
+    @apply text-sm sm:text-base lg:text-lg;
+  }
+  
+  /* 增强卡片对比度 */
+  .card-enhanced {
+    @apply bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+  
+  .dark .card-enhanced {
+    box-shadow: 0 1px 3px 0 rgb(255 255 255 / 0.1), 0 1px 2px -1px rgb(255 255 255 / 0.05);
   }
 }
 

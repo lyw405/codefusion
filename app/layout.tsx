@@ -32,7 +32,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased fixed w-full h-full overflow-hidden overscroll-behavior-none`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <SessionProvider>
           <QueryProvider>

@@ -1,32 +1,32 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- 渐变背景 -->
   <defs>
-    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    <!-- 主渐变 -->
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
     </linearGradient>
-    <linearGradient id="neuralGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- 节点渐变 -->
+    <linearGradient id="nodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:0.9" />
     </linearGradient>
   </defs>
   
-  <!-- 背景 -->
-  <rect width="32" height="32" rx="8" fill="url(#bgGradient)"/>
+  <!-- 背景圆角矩形 -->
+  <rect width="32" height="32" rx="8" fill="url(#mainGradient)"/>
   
-  <!-- 神经网络节点 -->
-  <circle cx="10" cy="10" r="1.5" fill="url(#neuralGradient)"/>
-  <circle cx="22" cy="10" r="1.5" fill="url(#neuralGradient)"/>
-  <circle cx="10" cy="22" r="1.5" fill="url(#neuralGradient)"/>
-  <circle cx="22" cy="22" r="1.5" fill="url(#neuralGradient)"/>
-  <circle cx="16" cy="16" r="2" fill="url(#neuralGradient)"/>
+  <!-- AI神经网络节点 -->
+  <circle cx="10" cy="10" r="2" fill="url(#nodeGradient)"/>
+  <circle cx="22" cy="10" r="2" fill="url(#nodeGradient)"/>
+  <circle cx="16" cy="18" r="2.5" fill="url(#nodeGradient)"/>
   
-  <!-- 神经网络连接线 -->
-  <path d="M10 10L16 16" stroke="white" stroke-width="1" stroke-opacity="0.6"/>
-  <path d="M22 10L16 16" stroke="white" stroke-width="1" stroke-opacity="0.6"/>
-  <path d="M10 22L16 16" stroke="white" stroke-width="1" stroke-opacity="0.6"/>
-  <path d="M22 22L16 16" stroke="white" stroke-width="1" stroke-opacity="0.6"/>
+  <!-- 连接线 -->
+  <path d="M10 10L16 18" stroke="white" stroke-width="1.8" stroke-opacity="0.8"/>
+  <path d="M22 10L16 18" stroke="white" stroke-width="1.8" stroke-opacity="0.8"/>
   
-  <!-- 中心发光效果 -->
-  <circle cx="16" cy="16" r="4" fill="none" stroke="white" stroke-width="1" stroke-opacity="0.3"/>
+  <!-- 部署箭头 -->
+  <path d="M16 21L16 28M12 25L16 21L20 25" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  
+  <!-- 发光效果 -->
+  <circle cx="16" cy="18" r="4" fill="none" stroke="white" stroke-width="1" stroke-opacity="0.4"/>
 </svg>
