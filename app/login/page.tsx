@@ -28,14 +28,17 @@ export default function LoginPage() {
   }
 
   if (status === "authenticated") {
-    redirect("/")
+    redirect("/main")
   }
 
   const handleSignIn = async (provider: "github" | "gitlab") => {
     setLoading(true)
     try {
-      await signIn(provider, { callbackUrl: "/main" })
-    } catch {
+      console.log(`尝试使用 ${provider} 登录...`)
+      const result = await signIn(provider, { callbackUrl: "/main" })
+      console.log("登录结果:", result)
+    } catch (error) {
+      console.error("登录错误:", error)
       setLoading(false)
     }
   }
@@ -153,6 +156,8 @@ export default function LoginPage() {
                 <span className="font-medium">Continue with GitLab</span>
               </div>
             </Button>
+            
+
           </div>
           
           {/* 底部装饰 */}
