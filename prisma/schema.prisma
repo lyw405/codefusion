@@ -45,6 +45,14 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+  
+  // 项目管理相关
+  projectMemberships ProjectMember[]
+  createdProjects    Project[]        @relation("ProjectCreator")
+  activities         ProjectActivity[]
+  
+  // 仓库权限相关
+  repositoryPermissions RepositoryPermission[]
 }
 
 model VerificationToken {
@@ -53,4 +61,284 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+// 项目模型 - 作为容器管理多个仓库
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  slug        String   @unique
+  status      ProjectStatus @default(PLANNING)
+  visibility  ProjectVisibility @default(PRIVATE)
+  techStack   String? // JSON 格式存储技术栈
+  template    String? // 项目模板类型
+  
+  // 项目配置
+  defaultBranch String @default("main")
+  autoDeploy    Boolean @default(false)
+  requireReview Boolean @default(true)
+  
+  // 时间戳
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // 关联关系
+  creatorId   String
+  creator     User     @relation("ProjectCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  repositories Repository[]
+  deployments Deployment[]
+  activities  ProjectActivity[]
+  
+  // 项目配置
+  settings    ProjectSettings?
+  
+  @@index([creatorId])
+  @@index([status])
+  @@index([visibility])
+}
+
+// 项目成员模型 - 项目级权限管理
+model ProjectMember {
+  id        String   @id @default(cuid())
+  role      ProjectRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+  invitedBy String?  // 邀请人ID
+  
+  // 权限配置
+  canManageMembers    Boolean @default(false) // 是否可以管理成员
+  canManageRepositories Boolean @default(false) // 是否可以管理仓库
+  canDeploy           Boolean @default(false) // 是否可以部署
+  canReview           Boolean @default(false) // 是否可以审查代码
+  
+  // 关联关系
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+// 代码仓库模型 - 属于项目
+model Repository {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  url         String
+  provider    RepositoryProvider
+  providerId  String   // GitHub/GitLab 仓库 ID
+  defaultBranch String @default("main")
+  isPrivate   Boolean  @default(true)
+  
+  // 仓库类型
+  type        RepositoryType @default(FRONTEND)
+  
+  // 同步配置
+  autoSync    Boolean @default(true)
+  syncInterval Int    @default(300) // 同步间隔（秒）
+  
+  // 时间戳
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastSyncAt  DateTime?
+  
+  // 关联关系
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // 部署配置
+  deployments Deployment[]
+  
+  // 仓库权限
+  permissions RepositoryPermission[]
+  
+  @@unique([projectId, providerId])
+  @@index([projectId])
+  @@index([provider, providerId])
+}
+
+// 仓库权限模型 - 细粒度的仓库权限控制
+model RepositoryPermission {
+  id        String   @id @default(cuid())
+  role      RepositoryRole @default(READ)
+  grantedAt DateTime @default(now())
+  grantedBy String   // 授权人ID
+  
+  // 关联关系
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([repositoryId, userId])
+  @@index([repositoryId])
+  @@index([userId])
+}
+
+// 部署模型
+model Deployment {
+  id          String   @id @default(cuid())
+  name        String
+  environment DeploymentEnvironment
+  status      DeploymentStatus @default(PENDING)
+  branch      String
+  commit      String?
+  commitMessage String?
+  
+  // 部署配置
+  config      String? // JSON 格式存储部署配置
+  
+  // 构建信息
+  buildTime   Int?     // 构建时间（秒）
+  buildLog    String?  // 构建日志
+  
+  // 时间戳
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deployedAt  DateTime?
+  
+  // 关联关系
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositoryId String?
+  repository  Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
+  
+  @@index([projectId])
+  @@index([status])
+  @@index([environment])
+}
+
+// 项目活动模型
+model ProjectActivity {
+  id        String   @id @default(cuid())
+  type      ActivityType
+  title     String
+  description String?
+  metadata  String? // JSON 格式存储活动元数据
+  
+  // 时间戳
+  createdAt DateTime @default(now())
+  
+  // 关联关系
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// 项目设置模型
+model ProjectSettings {
+  id String @id @default(cuid())
+  
+  // 通知设置
+  emailNotifications Boolean @default(true)
+  slackNotifications  Boolean @default(false)
+  slackWebhook       String?
+  
+  // 部署设置
+  autoDeploy         Boolean @default(false)
+  deployOnPush       Boolean @default(false)
+  requiredReviews    Int     @default(1)
+  
+  // 代码质量设置
+  enableCodeReview   Boolean @default(true)
+  enableLinting      Boolean @default(true)
+  enableTesting      Boolean @default(true)
+  
+  // 仓库设置
+  allowFork          Boolean @default(true)
+  allowPublicAccess  Boolean @default(false)
+  
+  // 关联关系
+  projectId String @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// 枚举类型定义
+enum ProjectStatus {
+  PLANNING     // 规划中
+  DEVELOPMENT  // 开发中
+  TESTING      // 测试中
+  STAGING      // 预发布
+  PRODUCTION   // 生产环境
+  ARCHIVED     // 已归档
+}
+
+enum ProjectVisibility {
+  PRIVATE      // 私有
+  TEAM         // 团队可见
+  PUBLIC       // 公开
+}
+
+enum ProjectRole {
+  OWNER        // 所有者 - 拥有所有权限
+  ADMIN        // 管理员 - 可以管理项目，但不能添加管理员
+  DEVELOPER    // 开发者 - 可以开发、部署
+  REVIEWER     // 审查者 - 可以审查代码
+  MEMBER       // 成员 - 基本访问权限
+  VIEWER       // 查看者 - 只读权限
+}
+
+enum RepositoryProvider {
+  GITHUB
+  GITLAB
+  BITBUCKET
+  GITEE
+}
+
+enum RepositoryType {
+  FRONTEND     // 前端
+  BACKEND      // 后端
+  MOBILE       // 移动端
+  DOCUMENTATION // 文档
+  INFRASTRUCTURE // 基础设施
+  TOOLS        // 工具
+  OTHER        // 其他
+}
+
+enum RepositoryRole {
+  ADMIN        // 管理员 - 完全控制
+  WRITE        // 写入 - 可以推送代码
+  READ         // 读取 - 只能查看
+  NONE         // 无权限
+}
+
+enum DeploymentEnvironment {
+  DEVELOPMENT  // 开发环境
+  STAGING      // 预发布环境
+  PRODUCTION   // 生产环境
+  PREVIEW      // 预览环境
+}
+
+enum DeploymentStatus {
+  PENDING      // 等待中
+  BUILDING     // 构建中
+  DEPLOYING    // 部署中
+  SUCCESS      // 成功
+  FAILED       // 失败
+  CANCELLED    // 已取消
+}
+
+enum ActivityType {
+  PROJECT_CREATED     // 项目创建
+  MEMBER_ADDED        // 成员添加
+  MEMBER_REMOVED      // 成员移除
+  MEMBER_ROLE_CHANGED // 成员角色变更
+  REPOSITORY_ADDED    // 仓库添加
+  REPOSITORY_REMOVED  // 仓库移除
+  DEPLOYMENT_STARTED  // 部署开始
+  DEPLOYMENT_SUCCESS  // 部署成功
+  DEPLOYMENT_FAILED   // 部署失败
+  CODE_REVIEW         // 代码审查
+  BRANCH_CREATED      // 分支创建
+  MERGE_REQUEST       // 合并请求
+  PROJECT_SETTINGS_CHANGED // 项目设置变更
 }
