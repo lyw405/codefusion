@@ -28,7 +28,7 @@ interface CreatePRDialogProps {
   onOpenChange: (open: boolean) => void
   members: Member[]
   repositories: Repository[]
-  onSubmit: (prData: any) => void
+  onSubmit: (prData: { title: string; description: string; repository: string; branch: string; baseBranch: string; reviewer: string }) => void
 }
 
 export function CreatePRDialog({ open, onOpenChange, members, repositories, onSubmit }: CreatePRDialogProps) {

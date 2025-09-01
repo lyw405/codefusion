@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ACTIVITY_TYPE_CONFIG } from "../config/constants"
 
@@ -10,7 +11,7 @@ interface Activity {
   description: string
   user: string
   timestamp: string
-  icon: any
+  icon: React.ComponentType<{ className?: string }> | string
 }
 
 interface RecentActivitiesProps {

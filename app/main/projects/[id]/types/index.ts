@@ -1,3 +1,4 @@
+import React from "react"
 import {
   PROJECT_STATUS_CONFIG,
   PROJECT_VISIBILITY_CONFIG,
@@ -83,7 +84,7 @@ export interface Activity {
   description: string
   user: string
   timestamp: string
-  icon: any
+  icon: React.ComponentType<{ className?: string }> | string
 }
 
 // 表单数据

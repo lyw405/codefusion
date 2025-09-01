@@ -188,7 +188,7 @@ export function AddProjectWizard({ open, onOpenChange, onSubmit }: AddProjectWiz
                       ? "ring-2 ring-primary border-primary" 
                       : "hover:border-muted-foreground/20"
                   }`}
-                  onClick={() => setConfig({ ...config, platform: platform.value as any })}
+                  onClick={() => setConfig({ ...config, platform: platform.value as typeof config.platform })}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">

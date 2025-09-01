@@ -12,7 +12,7 @@ import { REPOSITORY_TYPE_CONFIG } from "../../config/constants"
 interface AddRepositoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (repositoryData: any) => void
+  onSubmit: (repositoryData: { name: string; description: string; url: string; type: keyof typeof REPOSITORY_TYPE_CONFIG }) => void
 }
 
 export function AddRepositoryDialog({ open, onOpenChange, onSubmit }: AddRepositoryDialogProps) {

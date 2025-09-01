@@ -14,11 +14,9 @@ import {
   Clock,
   TrendingUp,
   BarChart3,
-  Zap,
   Star,
   ArrowUpRight,
   Globe,
-  Code2,
   Brain
 } from "lucide-react"
 

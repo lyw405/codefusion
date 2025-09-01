@@ -11,7 +11,7 @@ import { ROLE_CONFIG } from "../../config/constants"
 interface AddMemberDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (memberData: any) => void
+  onSubmit: (memberData: { email: string; role: keyof typeof ROLE_CONFIG }) => void
 }
 
 export function AddMemberDialog({ open, onOpenChange, onSubmit }: AddMemberDialogProps) {

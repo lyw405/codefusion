@@ -111,7 +111,7 @@ export function MonacoCodeDiff({ fileDiff, comments, onAddComment }: MonacoCodeD
     }
   }, [fileDiff, customHeight])
 
-  const handleEditorDidMount = (_editor: any, _monaco: any) => {
+  const handleEditorDidMount = (_editor: unknown, _monaco: unknown) => {
     // 简化版本：不添加复杂的事件监听
     console.log('Monaco Editor mounted successfully')
     

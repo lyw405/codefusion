@@ -56,7 +56,7 @@ export class DiffParser {
 
     return {
       filename,
-      status: status as any,
+      status: status as "added" | "modified" | "removed" | "renamed",
       additions,
       deletions,
       chunks,

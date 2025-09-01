@@ -31,3 +31,4 @@ echo "- 可以配置代码格式化规则"
 echo "- 支持扩展和插件"
 
 echo "📚 更多信息请查看: https://microsoft.github.io/monaco-editor/"
+

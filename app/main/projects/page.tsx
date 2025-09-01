@@ -25,37 +25,21 @@ import {
   Trash2,
   UserPlus,
   ExternalLink,
-  GitPullRequest,
   Rocket,
-  Activity,
   TrendingUp,
   Clock,
   CheckCircle,
   AlertCircle,
-  Play,
-  Pause,
   Archive,
-  Eye,
-  EyeOff,
   Globe,
   Shield,
-  Code2,
-  Database,
-  Server,
-  Zap,
-  Target,
-  BarChart3,
-  GitCommit,
-  GitMerge,
-  GitCompare,
   RefreshCw,
-  Filter,
   Grid3X3,
   List,
-  Download,
   Upload,
   Copy,
-  Share2,
+  Code2,
+  Server,
   Smartphone,
   ArrowLeft
 } from "lucide-react"
@@ -81,7 +65,7 @@ const PROJECT_VISIBILITY_CONFIG = {
 }
 
 export default function ProjectsPage() {
-  const { data: session } = useSession()
+  const { data: _session } = useSession()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedFilter, setSelectedFilter] = useState("all")
   const [selectedVisibility, setSelectedVisibility] = useState("all")
@@ -91,7 +75,7 @@ export default function ProjectsPage() {
   const [sortBy, setSortBy] = useState("updatedAt")
 
   // 模拟项目数据 - 实际项目中会从API获取
-  const [projects, setProjects] = useState([
+  const [projects, _setProjects] = useState([
     {
       id: "1",
       name: "电商平台",
