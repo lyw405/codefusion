@@ -1,23 +1,209 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState } from "react"
+import Link from "next/link"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
   GitPullRequest, 
-  Clock, 
-  Users, 
-  MessageSquare,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  Star,
   GitBranch,
-  Eye,
   ThumbsUp,
-  Sparkles
+  Plus,
+  Search,
+  Filter,
+  MoreHorizontal,
+  FileText,
+  Code,
+  GitCommit,
+  Calendar,
+  User,
+  MessageCircle,
+  Check,
+  Eye,
+  Clock
 } from "lucide-react"
 
+// 模拟数据
+const mockPRs = [
+  {
+    id: "PR-001",
+    title: "添加用户认证功能",
+    description: "实现基于JWT的用户认证系统，包括登录、注册、密码重置等功能",
+    author: {
+      name: "张三",
+      avatar: "https://github.com/shadcn.png",
+      email: "zhangsan@example.com"
+    },
+    status: "open",
+    priority: "high",
+    createdAt: "2024-01-15T10:30:00Z",
+    updatedAt: "2024-01-16T14:20:00Z",
+    branch: "feature/user-auth",
+    baseBranch: "main",
+    commits: 12,
+    additions: 450,
+    deletions: 120,
+    changedFiles: 8,
+    reviewers: [
+      { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" },
+      { name: "王五", avatar: "https://github.com/shadcn.png", status: "pending" }
+    ],
+    labels: ["feature", "auth", "backend"],
+    assignees: ["李四"],
+    comments: 8,
+    approvals: 1,
+    conflicts: false,
+    checks: {
+      status: "success",
+      tests: "passed",
+      linting: "passed",
+      build: "passed"
+    }
+  },
+  {
+    id: "PR-002",
+    title: "优化数据库查询性能",
+    description: "重构数据库查询逻辑，添加索引优化，提升查询性能30%",
+    author: {
+      name: "李四",
+      avatar: "https://github.com/shadcn.png",
+      email: "lisi@example.com"
+    },
+    status: "open",
+    priority: "medium",
+    createdAt: "2024-01-14T16:45:00Z",
+    updatedAt: "2024-01-16T09:15:00Z",
+    branch: "feature/db-optimization",
+    baseBranch: "main",
+    commits: 6,
+    additions: 280,
+    deletions: 95,
+    changedFiles: 5,
+    reviewers: [
+      { name: "张三", avatar: "https://github.com/shadcn.png", status: "changes_requested" },
+      { name: "王五", avatar: "https://github.com/shadcn.png", status: "approved" }
+    ],
+    labels: ["performance", "database", "optimization"],
+    assignees: ["张三"],
+    comments: 12,
+    approvals: 1,
+    conflicts: false,
+    checks: {
+      status: "success",
+      tests: "passed",
+      linting: "passed",
+      build: "passed"
+    }
+  },
+  {
+    id: "PR-003",
+    title: "修复登录页面样式问题",
+    description: "修复移动端登录页面样式错乱问题，优化响应式布局",
+    author: {
+      name: "王五",
+      avatar: "https://github.com/shadcn.png",
+      email: "wangwu@example.com"
+    },
+    status: "open",
+    priority: "low",
+    createdAt: "2024-01-13T11:20:00Z",
+    updatedAt: "2024-01-15T17:30:00Z",
+    branch: "fix/login-styles",
+    baseBranch: "main",
+    commits: 3,
+    additions: 120,
+    deletions: 45,
+    changedFiles: 3,
+    reviewers: [
+      { name: "张三", avatar: "https://github.com/shadcn.png", status: "approved" },
+      { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" }
+    ],
+    labels: ["bugfix", "frontend", "ui"],
+    assignees: [],
+    comments: 3,
+    approvals: 2,
+    conflicts: false,
+    checks: {
+      status: "success",
+      tests: "passed",
+      linting: "passed",
+      build: "passed"
+    }
+  }
+]
+
+const mockMRs = [
+  {
+    id: "MR-001",
+    title: "合并用户认证功能到主分支",
+    sourceBranch: "feature/user-auth",
+    targetBranch: "main",
+    status: "ready",
+    createdAt: "2024-01-16T15:00:00Z",
+    author: "张三",
+    approvals: 2,
+    conflicts: false
+  },
+  {
+    id: "MR-002",
+    title: "合并数据库优化功能",
+    sourceBranch: "feature/db-optimization",
+    targetBranch: "main",
+    status: "pending",
+    createdAt: "2024-01-16T10:00:00Z",
+    author: "李四",
+    approvals: 1,
+    conflicts: false
+  }
+]
+
 export default function CodeReviewPage() {
+  const [selectedTab, setSelectedTab] = useState("prs")
+
+  const formatTime = (timeString: string) => {
+    const date = new Date(timeString)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const days = Math.floor(hours / 24)
+    
+    if (days > 0) return `${days}天前`
+    if (hours > 0) return `${hours}小时前`
+    return "刚刚"
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "open": return "bg-green-500"
+      case "closed": return "bg-red-500"
+      case "merged": return "bg-purple-500"
+      default: return "bg-gray-500"
+    }
+  }
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "high": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+      case "medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+      case "low": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+    }
+  }
+
+  const getReviewerStatusColor = (status: string) => {
+    switch (status) {
+      case "approved": return "bg-green-500"
+      case "changes_requested": return "bg-red-500"
+      case "pending": return "bg-yellow-500"
+      default: return "bg-gray-500"
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
@@ -28,215 +214,261 @@ export default function CodeReviewPage() {
             代码审查
           </h1>
           <p className="text-muted-foreground mt-1">
-            PR/CR/MR 代码审查流程管理
+            Pull Request 和 Merge Request 管理
           </p>
         </div>
-      </div>
-
-      {/* 即将推出提示 */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600 p-8 text-white">
-        <div className="absolute inset-0 bg-black/20" />
-        <div className="relative z-10 text-center">
-          <Sparkles className="h-16 w-16 mx-auto mb-4 opacity-80" />
-          <h2 className="text-3xl font-bold mb-2">功能开发中</h2>
-          <p className="text-xl opacity-90 mb-6">
-            代码审查功能正在紧张开发中，敬请期待！
-          </p>
-          <div className="flex justify-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              <span>Pull Request 管理</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              <span>代码差异对比</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4" />
-              <span>评论与讨论</span>
-            </div>
-          </div>
-        </div>
-        <div className="absolute top-4 right-4 opacity-20">
-          <GitPullRequest className="h-32 w-32" />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm">
+            <Search className="h-4 w-4 mr-2" />
+            搜索
+          </Button>
+          <Button variant="outline" size="sm">
+            <Filter className="h-4 w-4 mr-2" />
+            筛选
+          </Button>
+          <Button asChild>
+            <Link href="/main/code-review/new">
+              <Plus className="h-4 w-4 mr-2" />
+              新建 PR
+            </Link>
+          </Button>
         </div>
       </div>
 
-      {/* 功能预览 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <GitPullRequest className="h-6 w-6 text-purple-500" />
-              <CardTitle className="text-lg">Pull Request 管理</CardTitle>
-            </div>
-            <CardDescription>
-              统一管理来自不同代码仓库的 Pull Request
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Eye className="h-4 w-4" />
-              <span>实时状态监控</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Users className="h-4 w-4" />
-              <span>审查者分配</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>自动提醒</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-6 w-6 text-blue-500" />
-              <CardTitle className="text-lg">代码评论系统</CardTitle>
-            </div>
-            <CardDescription>
-              行级评论、建议和讨论功能
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MessageSquare className="h-4 w-4" />
-              <span>行级评论</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <ThumbsUp className="h-4 w-4" />
-              <span>代码建议</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Star className="h-4 w-4" />
-              <span>重要标记</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <GitBranch className="h-6 w-6 text-green-500" />
-              <CardTitle className="text-lg">合并管理</CardTitle>
-            </div>
-            <CardDescription>
-              智能合并冲突检测和解决
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <AlertCircle className="h-4 w-4" />
-              <span>冲突检测</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="h-4 w-4" />
-              <span>自动测试</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <ThumbsUp className="h-4 w-4" />
-              <span>一键合并</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 模拟数据展示 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              待审查列表
-            </CardTitle>
-            <CardDescription>
-              需要您审查的代码变更
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { title: "添加用户认证功能", author: "张三", time: "2小时前", status: "pending" },
-              { title: "优化数据库查询性能", author: "李四", time: "4小时前", status: "pending" },
-              { title: "修复登录页面样式", author: "王五", time: "1天前", status: "pending" }
-            ].map((item, index) => (
-              <div key={index} className="flex items-center justify-between p-3 rounded-lg border border-dashed border-muted-foreground/30">
-                <div>
-                  <p className="font-medium text-muted-foreground">{item.title}</p>
-                  <p className="text-sm text-muted-foreground">by {item.author} • {item.time}</p>
-                </div>
-                <Badge variant="outline" className="text-muted-foreground">
-                  待审查
-                </Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5" />
-              最近活动
-            </CardTitle>
-            <CardDescription>
-              代码审查活动记录
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[
-              { action: "批准合并", target: "用户管理模块", time: "1小时前", status: "approved" },
-              { action: "请求修改", target: "支付接口优化", time: "3小时前", status: "changes" },
-              { action: "添加评论", target: "前端组件重构", time: "5小时前", status: "comment" }
-            ].map((activity, index) => (
-              <div key={index} className="flex items-center gap-4 p-3 rounded-lg border border-dashed border-muted-foreground/30">
-                <div className={`w-2 h-2 rounded-full ${
-                  activity.status === 'approved' ? 'bg-green-500' :
-                  activity.status === 'changes' ? 'bg-yellow-500' : 'bg-blue-500'
-                }`} />
-                <div className="flex-1">
-                  <p className="font-medium text-muted-foreground">{activity.action}</p>
-                  <p className="text-sm text-muted-foreground">{activity.target}</p>
-                </div>
-                <span className="text-sm text-muted-foreground">{activity.time}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 统计信息 */}
+      {/* 统计卡片 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardContent className="p-4 text-center">
-            <GitPullRequest className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold text-muted-foreground">--</p>
-            <p className="text-sm text-muted-foreground">待审查</p>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold">{mockPRs.length}</p>
+                <p className="text-sm text-muted-foreground">待审查 PR</p>
+              </div>
+              <GitPullRequest className="h-8 w-8 text-blue-500" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardContent className="p-4 text-center">
-            <CheckCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold text-muted-foreground">--</p>
-            <p className="text-sm text-muted-foreground">已批准</p>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-green-600">8</p>
+                <p className="text-sm text-muted-foreground">已批准</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-500" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardContent className="p-4 text-center">
-            <XCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold text-muted-foreground">--</p>
-            <p className="text-sm text-muted-foreground">需修改</p>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-yellow-600">3</p>
+                <p className="text-sm text-muted-foreground">需修改</p>
+              </div>
+              <XCircle className="h-8 w-8 text-yellow-500" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-dashed border-2 border-muted-foreground/30">
-          <CardContent className="p-4 text-center">
-            <Clock className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-2xl font-bold text-muted-foreground">--</p>
-            <p className="text-sm text-muted-foreground">平均时长</p>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-2xl font-bold text-purple-600">2.5h</p>
+                <p className="text-sm text-muted-foreground">平均审查时长</p>
+              </div>
+              <Clock className="h-8 w-8 text-purple-500" />
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* 主要内容区域 */}
+      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="prs" className="flex items-center gap-2">
+            <GitPullRequest className="h-4 w-4" />
+            Pull Requests ({mockPRs.length})
+          </TabsTrigger>
+          <TabsTrigger value="mrs" className="flex items-center gap-2">
+            <GitBranch className="h-4 w-4" />
+            Merge Requests ({mockMRs.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="prs" className="space-y-4">
+          {/* PR 列表 */}
+          <div className="space-y-4">
+            {mockPRs.map((pr) => (
+              <Link key={pr.id} href={`/main/code-review/${pr.id}`}>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-4">
+                      {/* PR 标题和状态 */}
+                      <div className="flex items-start gap-3">
+                        <div className={`w-3 h-3 rounded-full mt-2 ${getStatusColor(pr.status)}`} />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold hover:text-primary transition-colors">
+                              {pr.title}
+                            </h3>
+                            <Badge className={getPriorityColor(pr.priority)}>
+                              {pr.priority === "high" ? "高优先级" : 
+                               pr.priority === "medium" ? "中优先级" : "低优先级"}
+                            </Badge>
+                            {pr.conflicts && (
+                              <Badge variant="destructive">冲突</Badge>
+                            )}
+                          </div>
+                          <p className="text-muted-foreground text-sm mb-3">
+                            {pr.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* PR 元信息 */}
+                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={pr.author.avatar} />
+                            <AvatarFallback>{pr.author.name[0]}</AvatarFallback>
+                          </Avatar>
+                          <span>{pr.author.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <GitBranch className="h-4 w-4" />
+                          <span>{pr.branch} → {pr.baseBranch}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <GitCommit className="h-4 w-4" />
+                          <span>{pr.commits} commits</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <FileText className="h-4 w-4" />
+                          <span>{pr.changedFiles} files</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Code className="h-4 w-4" />
+                          <span>+{pr.additions} -{pr.deletions}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatTime(pr.createdAt)}</span>
+                        </div>
+                      </div>
+
+                      {/* 标签 */}
+                      <div className="flex items-center gap-2">
+                        {pr.labels.map((label, index) => (
+                          <Badge key={index} variant="outline" className="text-xs">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+
+                      {/* 审查者状态 */}
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">审查者:</span>
+                          {pr.reviewers.map((reviewer, index) => (
+                            <div key={index} className="flex items-center gap-1">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={reviewer.avatar} />
+                                <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
+                              </Avatar>
+                              <div className={`w-2 h-2 rounded-full ${getReviewerStatusColor(reviewer.status)}`} />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <MessageCircle className="h-4 w-4" />
+                            <span>{pr.comments}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <ThumbsUp className="h-4 w-4" />
+                            <span>{pr.approvals}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 右侧操作按钮 */}
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm">
+                        <Eye className="h-4 w-4 mr-2" />
+                        查看
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              </Link>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="mrs" className="space-y-4">
+          {/* MR 列表 */}
+          <div className="space-y-4">
+            {mockMRs.map((mr) => (
+              <Link key={mr.id} href={`/main/code-review/mr/${mr.id}`}>
+                <Card className="hover:shadow-lg transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold">{mr.title}</h3>
+                        <Badge variant={mr.status === "ready" ? "default" : "secondary"}>
+                          {mr.status === "ready" ? "可合并" : "待处理"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm text-muted-foreground mb-3">
+                        <div className="flex items-center gap-1">
+                          <GitBranch className="h-4 w-4" />
+                          <span>{mr.sourceBranch} → {mr.targetBranch}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          <span>{mr.author}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ThumbsUp className="h-4 w-4" />
+                          <span>{mr.approvals} 批准</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>{formatTime(mr.createdAt)}</span>
+                        </div>
+                      </div>
+                      {mr.conflicts && (
+                        <Badge variant="destructive" className="mb-3">存在冲突</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm">
+                        <Eye className="h-4 w-4 mr-2" />
+                        查看
+                      </Button>
+                      {mr.status === "ready" && (
+                        <Button size="sm">
+                          <Check className="h-4 w-4 mr-2" />
+                          合并
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              </Link>
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
