@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 import { Button } from "@/components/ui/button"
@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MarkdownPreview } from "../components/MarkdownPreview"
+import { CodeDiffViewer } from "../components/CodeDiffViewer"
+import { type DiffFile } from "../types/diff"
 import { 
   GitPullRequest, 
-  ArrowLeft,
   Plus,
   Users,
   GitBranch,
@@ -22,11 +23,14 @@ import {
   Code,
   Check,
   Settings,
-  Star,
-  Edit
+  Star
 } from "lucide-react"
+import { PageHeader } from "../components/common/PageHeader"
+import { Badge } from "@/components/ui/badge"
 
 export default function NewPRPage() {
+  const [selectedProject, setSelectedProject] = useState("")
+  const [selectedRepository, setSelectedRepository] = useState("")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState(`## 功能概述
 
@@ -55,20 +59,161 @@ Related to #124`)
   const [selectedReviewers, setSelectedReviewers] = useState<string[]>([])
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
 
-  const mockBranches = [
-    "main",
-    "develop", 
-    "feature/user-auth",
-    "feature/db-optimization",
-    "fix/login-styles",
-    "hotfix/security-patch"
+  // 模拟项目数据
+  const mockProjects = [
+    {
+      id: "1",
+      name: "电商平台",
+      description: "基于 Next.js 的现代化电商平台",
+      repositories: [
+        { id: "1", name: "frontend", provider: "GITHUB", url: "https://github.com/org/frontend", defaultBranch: "main" },
+        { id: "2", name: "backend", provider: "GITHUB", url: "https://github.com/org/backend", defaultBranch: "main" },
+        { id: "3", name: "mobile", provider: "GITHUB", url: "https://github.com/org/mobile", defaultBranch: "main" }
+      ],
+      members: [
+        { id: "1", name: "张三", email: "zhang@example.com", role: "OWNER", avatar: null },
+        { id: "2", name: "李四", email: "li@example.com", role: "DEVELOPER", avatar: null },
+        { id: "3", name: "王五", email: "wang@example.com", role: "REVIEWER", avatar: null }
+      ]
+    },
+    {
+      id: "2", 
+      name: "数据分析平台",
+      description: "Python + React 数据分析平台",
+      repositories: [
+        { id: "4", name: "analytics-api", provider: "GITHUB", url: "https://github.com/org/analytics-api", defaultBranch: "main" },
+        { id: "5", name: "analytics-web", provider: "GITHUB", url: "https://github.com/org/analytics-web", defaultBranch: "main" }
+      ],
+      members: [
+        { id: "4", name: "陈七", email: "chen@example.com", role: "OWNER", avatar: null },
+        { id: "5", name: "刘八", email: "liu@example.com", role: "DEVELOPER", avatar: null }
+      ]
+    }
   ]
 
-  const mockReviewers = [
-    { id: "1", name: "李四", avatar: "https://github.com/shadcn.png", email: "lisi@example.com" },
-    { id: "2", name: "王五", avatar: "https://github.com/shadcn.png", email: "wangwu@example.com" },
-    { id: "3", name: "赵六", avatar: "https://github.com/shadcn.png", email: "zhaoliu@example.com" }
+  // 根据选择的项目和仓库动态获取分支
+  const getBranchesForRepository = (_projectId: string, _repositoryId: string) => {
+    const baseBranches = ["main", "develop"]
+    const featureBranches = [
+      "feature/user-auth",
+      "feature/db-optimization", 
+      "feature/payment-integration",
+      "fix/login-styles",
+      "hotfix/security-patch"
+    ]
+    return [...baseBranches, ...featureBranches]
+  }
+
+  const mockBranches = selectedProject && selectedRepository 
+    ? getBranchesForRepository(selectedProject, selectedRepository)
+    : []
+
+  // 模拟diff文件数据
+  const mockDiffFiles: DiffFile[] = [
+    {
+      filename: "src/auth/auth.controller.ts",
+      status: "modified" as const,
+      additions: 45,
+      deletions: 12,
+      patch: `@@ -1,3 +1,4 @@
+ import { Controller, Post, Body, UseGuards } from '@nestjs/common';
++import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+ import { AuthService } from './auth.service';
+ import { LoginDto } from './dto/login.dto';`
+    },
+    {
+      filename: "src/auth/auth.service.ts", 
+      status: "modified" as const,
+      additions: 67,
+      deletions: 8,
+      patch: `@@ -1,5 +1,6 @@
+ import { Injectable, UnauthorizedException } from '@nestjs/common';
+ import { JwtService } from '@nestjs/jwt';
++import { ConfigService } from '@nestjs/config';
+ import { UsersService } from '../users/users.service';`
+    },
+    {
+      filename: "src/auth/dto/login.dto.ts",
+      status: "added" as const,
+      additions: 23,
+      deletions: 0,
+      patch: `@@ -0,0 +1,23 @@
++import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator';
++import { ApiProperty } from '@nestjs/swagger';
++
++export class LoginDto {
++  @ApiProperty({
++    description: '用户邮箱',
++    example: 'user@example.com'
++  })
++  @IsEmail({}, { message: '请输入有效的邮箱地址' })
++  email: string;`
+    },
+    {
+      filename: "src/middleware/error-handler.ts",
+      status: "removed" as const,
+      additions: 0,
+      deletions: 35,
+      patch: `@@ -1,35 +0,0 @@
+-import { Injectable, NestInterceptor } from '@nestjs/common';
+-import { Observable, throwError } from 'rxjs';
+-
+-@Injectable()
+-export class ErrorHandlerInterceptor implements NestInterceptor {
+-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {`
+    },
+    {
+      filename: "README.md",
+      status: "modified" as const,
+      additions: 8,
+      deletions: 2,
+      patch: `@@ -1,10 +1,16 @@
+ # Auth Service
+ 
+-Authentication service for the application
++Authentication service for the application with JWT support
+ 
+ ## Features
+ 
+-- User login
+-- User registration
++- User login with email/password
++- User registration with validation
++- JWT token generation
++- Password encryption
++- API documentation with Swagger`
+    }
   ]
+
+  // 根据选择的项目获取团队成员作为评审者
+  const getProjectReviewers = () => {
+    const project = mockProjects.find(p => p.id === selectedProject)
+    return project ? project.members.filter(member => member.role !== "VIEWER") : []
+  }
+
+  const mockReviewers = getProjectReviewers()
+
+  // 根据选择的项目获取仓库列表
+  const getProjectRepositories = () => {
+    const project = mockProjects.find(p => p.id === selectedProject)
+    return project ? project.repositories : []
+  }
+
+  // 处理项目选择变化
+  const handleProjectChange = (projectId: string) => {
+    setSelectedProject(projectId)
+    setSelectedRepository("") // 重置仓库选择
+    setSourceBranch("") // 重置分支选择
+    setTargetBranch("main") // 重置目标分支
+    setSelectedReviewers([]) // 重置评审者选择
+  }
+
+  // 处理仓库选择变化
+  const handleRepositoryChange = (repositoryId: string) => {
+    setSelectedRepository(repositoryId)
+    setSourceBranch("") // 重置分支选择
+    setTargetBranch("main") // 重置目标分支为默认
+  }
 
   const mockLabels = [
     { name: "feature", color: "bg-blue-500", description: "新功能" },
@@ -107,31 +252,154 @@ Related to #124`)
     )
   }
 
+
+
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/main/code-review">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            返回
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Plus className="h-6 w-6 text-primary" />
-            新建 Pull Request
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            创建新的代码审查请求
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="新建 Pull Request"
+        subtitle="创建新的代码审查请求"
+        icon={<Plus className="h-6 w-6 text-primary" />}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 主要内容区域 */}
         <div className="lg:col-span-2 space-y-6">
-          {/* PR 基本信息 */}
+          {/* 1. 项目和分支配置 - 合并为一个卡片 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                项目和分支配置
+              </CardTitle>
+              <CardDescription>
+                选择项目、仓库和分支设置
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* 项目配置 */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">项目配置</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="project">项目</Label>
+                    <Select value={selectedProject} onValueChange={handleProjectChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="选择项目..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockProjects.map(project => (
+                          <SelectItem key={project.id} value={project.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{project.name}</span>
+                              <span className="text-xs text-muted-foreground">{project.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="repository">仓库</Label>
+                    <Select 
+                      value={selectedRepository} 
+                      onValueChange={handleRepositoryChange}
+                      disabled={!selectedProject}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={selectedProject ? "选择仓库..." : "请先选择项目"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getProjectRepositories().map(repo => (
+                          <SelectItem key={repo.id} value={repo.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{repo.name}</span>
+                              <span className="text-xs text-muted-foreground">{repo.provider}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 分支设置 */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">分支设置</h4>
+                {!selectedProject || !selectedRepository ? (
+                  <div className="text-center py-6 text-muted-foreground bg-gray-50 dark:bg-gray-900 rounded-lg">
+                    <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">请先选择项目和仓库</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="source-branch">源分支</Label>
+                        <Select value={sourceBranch} onValueChange={setSourceBranch}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择源分支" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockBranches.filter(branch => branch !== targetBranch).map(branch => (
+                              <SelectItem key={branch} value={branch}>
+                                <div className="flex items-center gap-2">
+                                  <GitBranch className="h-3 w-3" />
+                                  {branch}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="target-branch">目标分支</Label>
+                        <Select value={targetBranch} onValueChange={setTargetBranch}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择目标分支" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockBranches.filter(branch => branch !== sourceBranch).map(branch => (
+                              <SelectItem key={branch} value={branch}>
+                                <div className="flex items-center gap-2">
+                                  <GitBranch className="h-3 w-3" />
+                                  {branch}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    
+                    {/* 分支关系预览 */}
+                    {sourceBranch && targetBranch && (
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <GitBranch className="h-4 w-4 text-blue-600" />
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            {sourceBranch}
+                          </Badge>
+                          <span className="text-blue-600 font-medium">→</span>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            {targetBranch}
+                          </Badge>
+                        </div>
+                        <span className="text-sm text-blue-700 dark:text-blue-300">
+                          将合并到目标分支
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 2. PR 基本信息 */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -178,105 +446,34 @@ Related to #124`)
             </CardContent>
           </Card>
 
-          {/* 分支选择 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GitBranch className="h-5 w-5" />
-                分支设置
-              </CardTitle>
-              <CardDescription>
-                选择源分支和目标分支
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="source-branch">源分支</Label>
-                  <Select value={sourceBranch} onValueChange={setSourceBranch}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择源分支" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mockBranches.filter(branch => branch !== targetBranch).map(branch => (
-                        <SelectItem key={branch} value={branch}>
-                          {branch}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+          {/* 3. 代码变更详情 */}
+          {!sourceBranch || !targetBranch ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Code className="h-5 w-5" />
+                  代码变更详情
+                </CardTitle>
+                <CardDescription>
+                  查看具体的文件变更和代码差异
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12 text-muted-foreground">
+                  <Code className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium mb-2">选择分支以查看代码变更</p>
+                  <p className="text-sm">系统将显示两个分支之间的详细代码差异</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="target-branch">目标分支</Label>
-                  <Select value={targetBranch} onValueChange={setTargetBranch}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="选择目标分支" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {mockBranches.filter(branch => branch !== sourceBranch).map(branch => (
-                        <SelectItem key={branch} value={branch}>
-                          {branch}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {sourceBranch && targetBranch && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <GitBranch className="h-4 w-4" />
-                  <span>{sourceBranch} → {targetBranch}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 代码预览 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Code className="h-5 w-5" />
-                变更预览
-              </CardTitle>
-              <CardDescription>
-                此次PR包含的代码变更
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Plus className="h-4 w-4 text-green-500" />
-                    <span className="font-mono text-sm">src/auth/auth.controller.ts</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded">+45</span>
-                    <span className="bg-red-100 text-red-800 px-2 py-1 rounded">-12</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Edit className="h-4 w-4 text-blue-500" />
-                    <span className="font-mono text-sm">src/auth/auth.service.ts</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded">+67</span>
-                    <span className="bg-red-100 text-red-800 px-2 py-1 rounded">-8</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <Plus className="h-4 w-4 text-green-500" />
-                    <span className="font-mono text-sm">src/auth/dto/login.dto.ts</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded">+23</span>
-                    <span className="bg-red-100 text-red-800 px-2 py-1 rounded">-0</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            <CodeDiffViewer
+              files={mockDiffFiles}
+              title="代码变更详情"
+              description={`${sourceBranch} → ${targetBranch} 的文件差异`}
+              showStats={true}
+            />
+          )}
         </div>
 
         {/* 侧边栏 */}
@@ -293,29 +490,43 @@ Related to #124`)
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockReviewers.map((reviewer) => (
-                <div 
-                  key={reviewer.id}
-                  className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                    selectedReviewers.includes(reviewer.id)
-                      ? 'bg-primary/10 border border-primary/20'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-900'
-                  }`}
-                  onClick={() => toggleReviewer(reviewer.id)}
-                >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={reviewer.avatar} />
-                    <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{reviewer.name}</p>
-                    <p className="text-xs text-muted-foreground">{reviewer.email}</p>
-                  </div>
-                  {selectedReviewers.includes(reviewer.id) && (
-                    <Check className="h-4 w-4 text-primary" />
-                  )}
+              {!selectedProject ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">请先选择项目</p>
+                  <p className="text-xs">项目成员将作为可选审查者</p>
                 </div>
-              ))}
+              ) : mockReviewers.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">该项目暂无可用审查者</p>
+                </div>
+              ) : (
+                mockReviewers.map((reviewer) => (
+                  <div 
+                    key={reviewer.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
+                      selectedReviewers.includes(reviewer.id)
+                        ? 'bg-primary/10 border border-primary/20'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-900'
+                    }`}
+                    onClick={() => toggleReviewer(reviewer.id)}
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={reviewer.avatar || undefined} />
+                      <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{reviewer.name}</p>
+                      <p className="text-xs text-muted-foreground">{reviewer.email}</p>
+                      <p className="text-xs text-blue-600">{reviewer.role}</p>
+                    </div>
+                    {selectedReviewers.includes(reviewer.id) && (
+                      <Check className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -361,7 +572,7 @@ Related to #124`)
                 <Button 
                   className="w-full" 
                   onClick={handleCreatePR}
-                  disabled={!title || !sourceBranch}
+                  disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
                 >
                   <GitPullRequest className="h-4 w-4 mr-2" />
                   创建 Pull Request

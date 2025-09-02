@@ -27,6 +27,8 @@ import {
   Eye,
   Clock
 } from "lucide-react"
+import { getStatusColor, getPriorityColor } from "./utils/status"
+import { formatTime } from "./utils/common"
 
 // 模拟数据
 const mockPRs = [
@@ -165,44 +167,7 @@ const mockMRs = [
 export default function CodeReviewPage() {
   const [selectedTab, setSelectedTab] = useState("prs")
 
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(hours / 24)
-    
-    if (days > 0) return `${days}天前`
-    if (hours > 0) return `${hours}小时前`
-    return "刚刚"
-  }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open": return "bg-green-500"
-      case "closed": return "bg-red-500"
-      case "merged": return "bg-purple-500"
-      default: return "bg-gray-500"
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-      case "medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-      case "low": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-    }
-  }
-
-  const getReviewerStatusColor = (status: string) => {
-    switch (status) {
-      case "approved": return "bg-green-500"
-      case "changes_requested": return "bg-red-500"
-      case "pending": return "bg-yellow-500"
-      default: return "bg-gray-500"
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -377,7 +342,10 @@ export default function CodeReviewPage() {
                                 <AvatarImage src={reviewer.avatar} />
                                 <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
                               </Avatar>
-                              <div className={`w-2 h-2 rounded-full ${getReviewerStatusColor(reviewer.status)}`} />
+                              <div className={`w-2 h-2 rounded-full ${
+                                reviewer.status === "approved" ? "bg-green-500" :
+                                reviewer.status === "changes_requested" ? "bg-red-500" : "bg-yellow-500"
+                              }`} />
                             </div>
                           ))}
                         </div>

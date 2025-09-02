@@ -1,4 +1,48 @@
-// 实际业务中的代码差异数据类型定义
+// 统一的代码差异数据类型定义
+
+// 基础文件差异类型
+export interface DiffFile {
+  filename: string
+  status: "added" | "modified" | "removed" | "renamed" | "deleted"
+  additions: number
+  deletions: number
+  patch: string
+  rawPatch?: string
+}
+
+// 统一的评论数据类型
+export interface Comment {
+  id: string
+  author: {
+    name: string
+    avatar: string
+    email?: string
+  }
+  content: string
+  createdAt: string
+  updatedAt?: string
+  lineNumber: number
+  file?: string
+  type: "suggestion" | "review" | "reply"
+  resolved?: boolean
+  reactions?: {
+    thumbsUp: number
+    thumbsDown: number
+    laugh: number
+    heart: number
+  }
+  // GitHub API 兼容字段
+  position?: number
+  commitId?: string
+  diffHunk?: string
+  startLine?: number
+  originalLine?: number
+  startSide?: "LEFT" | "RIGHT"
+  side?: "LEFT" | "RIGHT"
+  originalLineNumber?: number
+  pullRequestReviewId?: string
+  inReplyToId?: string
+}
 
 // GitHub API 风格的差异数据结构
 export interface GitDiffData {
@@ -16,8 +60,8 @@ export interface GitDiffData {
   merge_base_commit: Commit
 }
 
-// 差异文件
-export interface DiffFile {
+// GitHub API 差异文件类型
+export interface GitHubDiffFile {
   sha: string
   filename: string
   status: "added" | "modified" | "removed" | "renamed"
@@ -110,72 +154,9 @@ export interface DiffChunk {
 // 解析后的文件差异
 export interface ParsedFileDiff {
   filename: string
-  status: "added" | "modified" | "removed" | "renamed"
+  status: "added" | "modified" | "removed" | "renamed" | "deleted"
   additions: number
   deletions: number
   chunks: DiffChunk[]
   rawPatch?: string
 }
-
-// 评论数据
-export interface DiffComment {
-  id: string
-  node_id: string
-  url: string
-  html_url: string
-  body: string
-  path: string
-  position: number
-  line: number
-  commit_id: string
-  created_at: string
-  updated_at: string
-  author_association: string
-  user: User
-  start_line?: number
-  original_line?: number
-  start_side?: "LEFT" | "RIGHT"
-  side?: "LEFT" | "RIGHT"
-  line_number?: number
-  original_line_number?: number
-  diff_hunk?: string
-}
-
-// 审查评论
-export interface ReviewComment {
-  id: string
-  node_id: string
-  url: string
-  html_url: string
-  body: string
-  path: string
-  position: number
-  line: number
-  commit_id: string
-  created_at: string
-  updated_at: string
-  author_association: string
-  user: User
-  start_line?: number
-  original_line?: number
-  start_side?: "LEFT" | "RIGHT"
-  side?: "LEFT" | "RIGHT"
-  line_number?: number
-  original_line_number?: number
-  diff_hunk?: string
-  pull_request_review_id?: string
-  in_reply_to_id?: string
-  reactions?: {
-    url: string
-    total_count: number
-    "+1": number
-    "-1": number
-    laugh: number
-    hooray: number
-    confused: number
-    heart: number
-    rocket: number
-    eyes: number
-  }
-}
-

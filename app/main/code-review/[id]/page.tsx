@@ -1,34 +1,50 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { MonacoCodeDiff } from "../components/MonacoCodeDiff"
 import { MarkdownPreview } from "../components/MarkdownPreview"
+import { CodeDiffViewer } from "../components/CodeDiffViewer"
 import { DiffParser, mockGitHubDiffData } from "../utils/diffParser"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   GitPullRequest, 
-  CheckCircle,
   AlertCircle,
-  Plus,
   FileText,
-  Code,
   Check,
   X,
-  Edit,
-  Trash2,
   Download,
   Share2,
-  ArrowLeft,
   Settings,
-  FileDiff,
-  MessageSquare,
   GitMerge
 } from "lucide-react"
+import { formatTime } from "../utils/common"
+import { getStatusColor, getPriorityColor } from "../utils/status"
+import { PageHeader } from "../components/common/PageHeader"
+import { ReviewerList } from "../components/common/ReviewerList"
+import { CheckStatus } from "../components/common/CheckStatus"
+import { CommentSection } from "../components/CommentSection"
+
+// 评论数据类型
+interface Comment {
+  id: string
+  author: {
+    name: string
+    avatar: string
+    email: string
+  }
+  content: string
+  createdAt: string
+  updatedAt?: string
+  type: "suggestion" | "review" | "reply"
+  reactions: {
+    thumbsUp: number
+    heart: number
+  }
+  replies?: Comment[]
+  isEdited?: boolean
+}
 
 // 模拟PR详情数据
 const mockPRDetail = {
@@ -68,8 +84,8 @@ Related to #124`,
   deletions: 120,
   changedFiles: 7,
   reviewers: [
-    { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" },
-    { name: "王五", avatar: "https://github.com/shadcn.png", status: "pending" }
+    { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" as const },
+    { name: "王五", avatar: "https://github.com/shadcn.png", status: "pending" as const }
   ],
   labels: ["feature", "auth", "backend"],
   assignees: ["李四"],
@@ -120,19 +136,77 @@ Related to #124`,
     },
     {
       name: "src/middleware/error-handler.ts",
-      status: "deleted",
+      status: "removed",
       additions: 0,
       deletions: 35,
       comments: 0
     },
     {
       name: "src/utils/legacy-helper.ts",
-      status: "deleted",
+      status: "removed",
       additions: 0,
       deletions: 42,
       comments: 0
     }
   ]
+}
+
+// 模拟评论数据
+const mockComments: Comment[] = [
+  {
+    id: "comment-1",
+    author: {
+      name: "李四",
+      avatar: "https://github.com/shadcn.png",
+      email: "lisi@example.com"
+    },
+    content: "这个JWT实现看起来不错，但是建议添加token刷新机制。",
+    createdAt: "2024-01-16T10:30:00Z",
+    type: "suggestion",
+    reactions: {
+      thumbsUp: 2,
+      heart: 1
+    },
+    replies: [
+      {
+        id: "reply-1",
+        author: {
+          name: "张三",
+          avatar: "https://github.com/shadcn.png",
+          email: "zhangsan@example.com"
+        },
+        content: "好的建议，我会添加这些安全措施。",
+        createdAt: "2024-01-16T12:00:00Z",
+        type: "reply",
+        reactions: {
+          thumbsUp: 1,
+          heart: 0
+        }
+      }
+    ]
+  },
+  {
+    id: "comment-2",
+    author: {
+      name: "王五",
+      avatar: "https://github.com/shadcn.png",
+      email: "wangwu@example.com"
+    },
+    content: "建议在登录接口添加登录失败次数限制，防止暴力破解。",
+    createdAt: "2024-01-16T11:15:00Z",
+    type: "review",
+    reactions: {
+      thumbsUp: 3,
+      heart: 0
+    }
+  }
+]
+
+// 模拟当前用户
+const currentUser = {
+  name: "张三",
+  avatar: "https://github.com/shadcn.png",
+  email: "zhangsan@example.com"
 }
 
 // 使用真实的数据解析器
@@ -153,143 +227,93 @@ console.log('Parsed file diffs:', parsedFileDiffs.map(diff => ({
   chunkLines: diff.chunks.map(chunk => chunk.lines.map(line => line.type))
 })))
 
-// 模拟评论数据
-const mockComments: Array<{
-  id: string;
-  author: { name: string; avatar: string };
-  content: string;
-  createdAt: string;
-  lineNumber: number;
-  file: string;
-  type: "suggestion" | "review" | "reply";
-}> = [
-  {
-    id: "comment-1",
-    author: {
-      name: "李四",
-      avatar: "https://github.com/shadcn.png"
-    },
-    content: "这个JWT实现看起来不错，但是建议添加token刷新机制。",
-    createdAt: "2024-01-16T10:30:00Z",
-    lineNumber: 18,
-    file: "src/auth/auth.controller.ts",
-    type: "suggestion"
-  },
-  {
-    id: "comment-2",
-    author: {
-      name: "王五",
-      avatar: "https://github.com/shadcn.png"
-    },
-    content: "建议在登录接口添加登录失败次数限制，防止暴力破解。",
-    createdAt: "2024-01-16T11:15:00Z",
-    lineNumber: 14,
-    file: "src/auth/auth.controller.ts",
-    type: "review"
-  },
-  {
-    id: "comment-3",
-    author: {
-      name: "张三",
-      avatar: "https://github.com/shadcn.png"
-    },
-    content: "好的建议，我会添加这些安全措施。",
-    createdAt: "2024-01-16T12:00:00Z",
-    lineNumber: 18,
-    file: "src/auth/auth.controller.ts",
-    type: "reply"
-  }
-]
-
 export default function PRDetailPage({ params }: { params: { id: string } }) {
   const [selectedFile, setSelectedFile] = useState("src/auth/auth.controller.ts")
   const [comments, setComments] = useState(mockComments)
 
-  const handleAddComment = (lineNumber: number, content: string) => {
+  // 评论相关处理函数
+  const handleAddComment = (content: string, type: "suggestion" | "review" | "reply") => {
     const newComment = {
       id: `comment-${Date.now()}`,
-      author: {
-        name: "当前用户",
-        avatar: "https://github.com/shadcn.png"
-      },
+      author: currentUser,
       content,
       createdAt: new Date().toISOString(),
-      lineNumber,
-      file: selectedFile,
-      type: "review" as const
+      type,
+      reactions: {
+        thumbsUp: 0,
+        heart: 0
+      }
     }
     setComments(prev => [...prev, newComment])
   }
 
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(hours / 24)
+  const handleReplyToComment = (commentId: string, content: string) => {
+    const newReply = {
+      id: `reply-${Date.now()}`,
+      author: currentUser,
+      content,
+      createdAt: new Date().toISOString(),
+      type: "reply" as const,
+      reactions: {
+        thumbsUp: 0,
+        heart: 0
+      }
+    }
     
-    if (days > 0) return `${days}天前`
-    if (hours > 0) return `${hours}小时前`
-    return "刚刚"
+    setComments(prev => prev.map(comment => 
+      comment.id === commentId 
+        ? { ...comment, replies: [...(comment.replies || []), newReply] }
+        : comment
+    ))
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "open": return "bg-green-500"
-      case "closed": return "bg-red-500"
-      case "merged": return "bg-purple-500"
-      default: return "bg-gray-500"
-    }
+  const handleReactToComment = (commentId: string, reaction: "thumbsUp" | "heart") => {
+    setComments(prev => prev.map(comment => {
+      if (comment.id === commentId) {
+        return {
+          ...comment,
+          reactions: {
+            ...comment.reactions,
+            [reaction]: (comment.reactions?.[reaction] || 0) + 1
+          }
+        }
+      }
+      return comment
+    }))
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-      case "medium": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-      case "low": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-    }
+  const handleEditComment = (commentId: string, content: string) => {
+    setComments(prev => prev.map(comment => 
+      comment.id === commentId 
+        ? { ...comment, content, isEdited: true, updatedAt: new Date().toISOString() }
+        : comment
+    ))
   }
 
-  const getFileStatusIcon = (status: string) => {
-    switch (status) {
-      case "added": return <Plus className="h-4 w-4 text-green-500" />
-      case "modified": return <Edit className="h-4 w-4 text-blue-500" />
-      case "deleted": return <Trash2 className="h-4 w-4 text-red-500" />
-      default: return <FileText className="h-4 w-4 text-gray-500" />
-    }
+  const handleDeleteComment = (commentId: string) => {
+    setComments(prev => prev.filter(comment => comment.id !== commentId))
   }
 
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/main/code-review">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            返回
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <GitPullRequest className="h-6 w-6 text-primary" />
-            {mockPRDetail.title}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            #{params.id} by {mockPRDetail.author.name} • {formatTime(mockPRDetail.createdAt)}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            设置
-          </Button>
-          <Button size="sm">
-            <Check className="h-4 w-4 mr-2" />
-            批准
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={mockPRDetail.title}
+        subtitle={`#${params.id} by ${mockPRDetail.author.name} • ${formatTime(mockPRDetail.createdAt)}`}
+        icon={<GitPullRequest className="h-6 w-6 text-primary" />}
+        actions={
+          <>
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              设置
+            </Button>
+            <Button size="sm">
+              <Check className="h-4 w-4 mr-2" />
+              批准
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* 主要内容区域 */}
@@ -322,63 +346,28 @@ export default function PRDetailPage({ params }: { params: { id: string } }) {
             </CardContent>
           </Card>
 
-          {/* 文件变更列表 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileDiff className="h-5 w-5" />
-                文件变更 ({mockPRDetail.changedFiles} 个文件)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {mockPRDetail.changedFilesList.map((file, index) => (
-                  <div 
-                    key={index}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedFile === file.name 
-                        ? 'border-primary bg-primary/5' 
-                        : 'border-border hover:border-primary/50'
-                    }`}
-                    onClick={() => setSelectedFile(file.name)}
-                  >
-                    <div className="flex items-center gap-3">
-                      {getFileStatusIcon(file.status)}
-                      <span className="font-mono text-sm">{file.name}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>+{file.additions} -{file.deletions}</span>
-                      {file.comments > 0 && (
-                        <div className="flex items-center gap-1">
-                          <MessageSquare className="h-4 w-4" />
-                          <span>{file.comments}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 代码差异和批注 */}
-          {selectedFile && parsedFileDiffs.find(file => file.filename === selectedFile) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5" />
-                  {selectedFile}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <MonacoCodeDiff 
-                  fileDiff={parsedFileDiffs.find(file => file.filename === selectedFile)!}
-                  comments={comments.filter(comment => comment.file === selectedFile)}
-                  onAddComment={handleAddComment}
-                />
-              </CardContent>
-            </Card>
-          )}
+          {/* 文件变更概览 */}
+          <CodeDiffViewer
+            files={parsedFileDiffs.map(diff => ({
+              filename: diff.filename,
+              status: diff.status,
+              additions: diff.additions,
+              deletions: diff.deletions,
+              patch: diff.rawPatch || diff.chunks.map(chunk => 
+                `${chunk.header}\n${chunk.lines.map(line => 
+                  line.type === 'addition' ? `+${line.content}` :
+                  line.type === 'deletion' ? `-${line.content}` :
+                  ` ${line.content}`
+                ).join('\n')}`
+              ).join('\n\n'),
+              rawPatch: diff.rawPatch
+            }))}
+            title="文件变更概览"
+            description="点击文件查看详细代码差异"
+            onFileSelect={setSelectedFile}
+            selectedFile={selectedFile}
+            showStats={true}
+          />
         </div>
 
         {/* 侧边栏 */}
@@ -409,52 +398,16 @@ export default function PRDetailPage({ params }: { params: { id: string } }) {
           </Card>
 
           {/* 审查者 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">审查者</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {mockPRDetail.reviewers.map((reviewer, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={reviewer.avatar} />
-                      <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{reviewer.name}</span>
-                  </div>
-                  <Badge variant={
-                    reviewer.status === "approved" ? "default" :
-                    reviewer.status === "changes_requested" ? "destructive" : "secondary"
-                  }>
-                    {reviewer.status === "approved" ? "已批准" :
-                     reviewer.status === "changes_requested" ? "需修改" : "待审查"}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <ReviewerList reviewers={mockPRDetail.reviewers} />
 
           {/* 检查状态 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">检查</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm">测试通过</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm">代码检查通过</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-500" />
-                <span className="text-sm">构建成功</span>
-              </div>
-            </CardContent>
-          </Card>
+          <CheckStatus 
+            checks={[
+              { name: "测试", status: "success" },
+              { name: "代码检查", status: "success" },
+              { name: "构建", status: "success" }
+            ]} 
+          />
 
           {/* 标签 */}
           <Card>
@@ -498,6 +451,17 @@ export default function PRDetailPage({ params }: { params: { id: string } }) {
           </Card>
         </div>
       </div>
+
+      {/* 评论区 */}
+      <CommentSection
+        comments={comments}
+        onAddComment={handleAddComment}
+        onReplyToComment={handleReplyToComment}
+        onReactToComment={handleReactToComment}
+        onEditComment={handleEditComment}
+        onDeleteComment={handleDeleteComment}
+        currentUser={currentUser}
+      />
     </div>
   )
 }

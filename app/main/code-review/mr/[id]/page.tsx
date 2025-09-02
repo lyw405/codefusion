@@ -1,13 +1,10 @@
 "use client"
 
-import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
   GitBranch, 
-  ArrowLeft,
   Check,
   AlertCircle,
   GitMerge,
@@ -15,6 +12,90 @@ import {
   Download,
   Share2
 } from "lucide-react"
+import { formatTime } from "../../utils/common"
+import { PageHeader } from "../../components/common/PageHeader"
+import { ReviewerList } from "../../components/common/ReviewerList"
+import { CheckStatus } from "../../components/common/CheckStatus"
+import { CommentSection } from "../../components/CommentSection"
+import { useState } from "react"
+
+// 评论数据类型
+interface Comment {
+  id: string
+  author: {
+    name: string
+    avatar: string
+    email: string
+  }
+  content: string
+  createdAt: string
+  updatedAt?: string
+  type: "suggestion" | "review" | "reply"
+  reactions: {
+    thumbsUp: number
+    heart: number
+  }
+  replies?: Comment[]
+  isEdited?: boolean
+}
+
+// 模拟评论数据
+const mockComments: Comment[] = [
+  {
+    id: "comment-1",
+    author: {
+      name: "李四",
+      avatar: "https://github.com/shadcn.png",
+      email: "lisi@example.com"
+    },
+    content: "这个用户认证功能实现得很好，代码结构清晰。",
+    createdAt: "2024-01-16T15:30:00Z",
+    type: "review",
+    reactions: {
+      thumbsUp: 1,
+      heart: 0
+    }
+  },
+  {
+    id: "comment-2",
+    author: {
+      name: "王五",
+      avatar: "https://github.com/shadcn.png",
+      email: "wangwu@example.com"
+    },
+    content: "建议在用户注册时添加邮箱验证功能。",
+    createdAt: "2024-01-16T16:00:00Z",
+    type: "suggestion",
+    reactions: {
+      thumbsUp: 2,
+      heart: 0
+    },
+    replies: [
+      {
+        id: "reply-1",
+        author: {
+          name: "张三",
+          avatar: "https://github.com/shadcn.png",
+          email: "zhangsan@example.com"
+        },
+        content: "好的建议，我会在下一个版本中添加这个功能。",
+        createdAt: "2024-01-16T16:30:00Z",
+        type: "reply",
+        reactions: {
+          thumbsUp: 1,
+          heart: 0
+        }
+      }
+    ]
+  }
+]
+
+// 模拟当前用户
+const currentUser = {
+  name: "张三",
+  avatar: "https://github.com/shadcn.png",
+  email: "zhangsan@example.com"
+}
 
 // 模拟MR详情数据
 const mockMRDetail = {
@@ -36,8 +117,8 @@ const mockMRDetail = {
   additions: 450,
   deletions: 120,
   reviewers: [
-    { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" },
-    { name: "王五", avatar: "https://github.com/shadcn.png", status: "approved" }
+    { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" as const },
+    { name: "王五", avatar: "https://github.com/shadcn.png", status: "approved" as const }
   ],
   checks: {
     status: "success",
@@ -48,50 +129,94 @@ const mockMRDetail = {
 }
 
 export default function MRDetailPage({ params }: { params: { id: string } }) {
-  const formatTime = (timeString: string) => {
-    const date = new Date(timeString)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    const days = Math.floor(hours / 24)
-    
-    if (days > 0) return `${days}天前`
-    if (hours > 0) return `${hours}小时前`
-    return "刚刚"
+  const [comments, setComments] = useState(mockComments)
+
+  // 评论相关处理函数
+  const handleAddComment = (content: string, type: "suggestion" | "review" | "reply") => {
+    const newComment = {
+      id: `comment-${Date.now()}`,
+      author: currentUser,
+      content,
+      createdAt: new Date().toISOString(),
+      type,
+      reactions: {
+        thumbsUp: 0,
+        heart: 0
+      }
+    }
+    setComments(prev => [...prev, newComment])
   }
+
+  const handleReplyToComment = (commentId: string, content: string) => {
+    const newReply = {
+      id: `reply-${Date.now()}`,
+      author: currentUser,
+      content,
+      createdAt: new Date().toISOString(),
+      type: "reply" as const,
+      reactions: {
+        thumbsUp: 0,
+        heart: 0
+      }
+    }
+    
+    setComments(prev => prev.map(comment => 
+      comment.id === commentId 
+        ? { ...comment, replies: [...(comment.replies || []), newReply] }
+        : comment
+    ))
+  }
+
+  const handleReactToComment = (commentId: string, reaction: "thumbsUp" | "heart") => {
+    setComments(prev => prev.map(comment => {
+      if (comment.id === commentId) {
+        return {
+          ...comment,
+          reactions: {
+            ...comment.reactions,
+            [reaction]: (comment.reactions?.[reaction] || 0) + 1
+          }
+        }
+      }
+      return comment
+    }))
+  }
+
+  const handleEditComment = (commentId: string, content: string) => {
+    setComments(prev => prev.map(comment => 
+      comment.id === commentId 
+        ? { ...comment, content, isEdited: true, updatedAt: new Date().toISOString() }
+        : comment
+    ))
+  }
+
+  const handleDeleteComment = (commentId: string) => {
+    setComments(prev => prev.filter(comment => comment.id !== commentId))
+  }
+
 
   return (
     <div className="space-y-6">
       {/* 页面头部 */}
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/main/code-review">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            返回
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <GitBranch className="h-6 w-6 text-primary" />
-            {mockMRDetail.title}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            #{params.id} by {mockMRDetail.author.name} • {formatTime(mockMRDetail.createdAt)}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Settings className="h-4 w-4 mr-2" />
-            设置
-          </Button>
-          {mockMRDetail.status === "ready" && (
-            <Button size="sm">
-              <GitMerge className="h-4 w-4 mr-2" />
-              合并
+      <PageHeader
+        title={mockMRDetail.title}
+        subtitle={`#${params.id} by ${mockMRDetail.author.name} • ${formatTime(mockMRDetail.createdAt)}`}
+        icon={<GitBranch className="h-6 w-6 text-primary" />}
+        actions={
+          <>
+            <Button variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              设置
             </Button>
-          )}
-        </div>
-      </div>
+            {mockMRDetail.status === "ready" && (
+              <Button size="sm">
+                <GitMerge className="h-4 w-4 mr-2" />
+                合并
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* 主要内容区域 */}
@@ -189,48 +314,16 @@ export default function MRDetailPage({ params }: { params: { id: string } }) {
           </Card>
 
           {/* 审查者 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">审查者</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {mockMRDetail.reviewers.map((reviewer, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={reviewer.avatar} />
-                      <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="text-sm">{reviewer.name}</span>
-                  </div>
-                  <Badge variant="default">
-                    {reviewer.status === "approved" ? "已批准" : "待审查"}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <ReviewerList reviewers={mockMRDetail.reviewers} />
 
           {/* 检查状态 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">检查</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
-                <span className="text-sm">测试通过</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
-                <span className="text-sm">代码检查通过</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Check className="h-4 w-4 text-green-500" />
-                <span className="text-sm">构建成功</span>
-              </div>
-            </CardContent>
-          </Card>
+          <CheckStatus 
+            checks={[
+              { name: "测试", status: "success" },
+              { name: "代码检查", status: "success" },
+              { name: "构建", status: "success" }
+            ]} 
+          />
 
           {/* 操作 */}
           <Card>
@@ -250,6 +343,17 @@ export default function MRDetailPage({ params }: { params: { id: string } }) {
           </Card>
         </div>
       </div>
+
+      {/* 评论区 */}
+      <CommentSection
+        comments={comments}
+        onAddComment={handleAddComment}
+        onReplyToComment={handleReplyToComment}
+        onReactToComment={handleReactToComment}
+        onEditComment={handleEditComment}
+        onDeleteComment={handleDeleteComment}
+        currentUser={currentUser}
+      />
     </div>
   )
 }
