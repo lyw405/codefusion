@@ -10,6 +10,14 @@ import {
   GitMerge,
   GitCommit,
   AlertCircle,
+  FolderPlus,
+  UserPlus,
+  UserMinus,
+  Settings,
+  GitBranch,
+  CheckCircle,
+  XCircle,
+  Plus,
 } from "lucide-react"
 
 // 项目状态配置
@@ -47,11 +55,19 @@ export const ROLE_CONFIG = {
   VIEWER: { label: "查看者", color: "bg-gray-500" },
 }
 
-// 活动类型配置
+// 活动类型配置 - 匹配数据库中的 ActivityType 枚举
 export const ACTIVITY_TYPE_CONFIG = {
-  DEPLOYMENT: { icon: Rocket, color: "text-green-600" },
-  PR_MERGED: { icon: GitMerge, color: "text-blue-600" },
-  MEMBER_ADDED: { icon: Users, color: "text-purple-600" },
-  COMMIT: { icon: GitCommit, color: "text-gray-600" },
-  ISSUE_CREATED: { icon: AlertCircle, color: "text-orange-600" },
+  PROJECT_CREATED: { icon: Plus, color: "text-blue-600" },
+  MEMBER_ADDED: { icon: UserPlus, color: "text-green-600" },
+  MEMBER_REMOVED: { icon: UserMinus, color: "text-red-600" },
+  MEMBER_ROLE_CHANGED: { icon: Settings, color: "text-orange-600" },
+  REPOSITORY_ADDED: { icon: FolderPlus, color: "text-blue-600" },
+  REPOSITORY_REMOVED: { icon: GitCommit, color: "text-red-600" },
+  DEPLOYMENT_STARTED: { icon: Rocket, color: "text-yellow-600" },
+  DEPLOYMENT_SUCCESS: { icon: CheckCircle, color: "text-green-600" },
+  DEPLOYMENT_FAILED: { icon: XCircle, color: "text-red-600" },
+  CODE_REVIEW: { icon: AlertCircle, color: "text-purple-600" },
+  BRANCH_CREATED: { icon: GitBranch, color: "text-blue-600" },
+  MERGE_REQUEST: { icon: GitMerge, color: "text-indigo-600" },
+  PROJECT_SETTINGS_CHANGED: { icon: Settings, color: "text-gray-600" },
 }

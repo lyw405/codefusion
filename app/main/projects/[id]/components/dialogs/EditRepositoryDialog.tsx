@@ -1,46 +1,53 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Github, GitlabIcon as Gitlab, FileText as Gitee, Package as Bitbucket } from "lucide-react"
-import { useRepositories, CreateRepositoryData } from "@/hooks/useRepositories"
+import { useRepositories, Repository, UpdateRepositoryData } from "@/hooks/useRepositories"
 
-interface AddRepositoryDialogProps {
+interface EditRepositoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
+  repository: Repository | null
   onSuccess?: () => void
 }
 
-export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }: AddRepositoryDialogProps) {
-  const [formData, setFormData] = useState<CreateRepositoryData>({
+export function EditRepositoryDialog({ open, onOpenChange, projectId, repository, onSuccess }: EditRepositoryDialogProps) {
+  const [formData, setFormData] = useState<UpdateRepositoryData>({
     name: "",
     provider: "GITHUB",
     url: "",
     defaultBranch: "main",
   })
   
-  const { createRepository, loading, error } = useRepositories(projectId)
+  const { updateRepository, loading, error } = useRepositories(projectId)
+
+  // 当仓库数据变化时更新表单
+  useEffect(() => {
+    if (repository) {
+      setFormData({
+        name: repository.name,
+        provider: repository.provider,
+        url: repository.url,
+        defaultBranch: repository.defaultBranch,
+      })
+    }
+  }, [repository])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name || !formData.url) {
+    if (!repository || !formData.name || !formData.url) {
       return
     }
 
-    const repository = await createRepository(formData)
-    if (repository) {
-      setFormData({
-        name: "",
-        provider: "GITHUB",
-        url: "",
-        defaultBranch: "main",
-      })
+    const updatedRepository = await updateRepository(repository.id, formData)
+    if (updatedRepository) {
       onOpenChange(false)
       onSuccess?.()
     }
@@ -60,16 +67,17 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>添加代码仓库</DialogTitle>
+          <DialogTitle>编辑代码仓库</DialogTitle>
           <DialogDescription>
-            连接新的代码仓库到项目
+            修改仓库的基本信息
           </DialogDescription>
         </DialogHeader>
+        
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="repo-name">仓库名称 *</Label>
+            <Label htmlFor="edit-repo-name">仓库名称 *</Label>
             <Input
-              id="repo-name"
+              id="edit-repo-name"
               value={formData.name}
               onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               placeholder="my-repository"
@@ -78,7 +86,7 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="repo-provider">代码托管平台</Label>
+            <Label htmlFor="edit-repo-provider">代码托管平台</Label>
             <Select value={formData.provider} onValueChange={(value: any) => setFormData(prev => ({ ...prev, provider: value }))}>
               <SelectTrigger>
                 <SelectValue />
@@ -105,9 +113,9 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="repo-url">仓库URL *</Label>
+            <Label htmlFor="edit-repo-url">仓库URL *</Label>
             <Input
-              id="repo-url"
+              id="edit-repo-url"
               value={formData.url}
               onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
               placeholder="https://github.com/username/repository.git"
@@ -116,9 +124,9 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="repo-branch">默认分支</Label>
+            <Label htmlFor="edit-repo-branch">默认分支</Label>
             <Input
-              id="repo-branch"
+              id="edit-repo-branch"
               value={formData.defaultBranch}
               onChange={(e) => setFormData(prev => ({ ...prev, defaultBranch: e.target.value }))}
               placeholder="main"
@@ -135,7 +143,7 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
             取消
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "添加中..." : "添加仓库"}
+            {loading ? "保存中..." : "保存更改"}
           </Button>
         </div>
       </DialogContent>
