@@ -1,42 +1,46 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Shield, Users, Eye, Code } from "lucide-react"
-import { useProjectMembers, AddMemberData } from "@/hooks/useProjectMembers"
+import { useProjectMembers, ProjectMember, UpdateMemberData } from "@/hooks/useProjectMembers"
 
-interface AddMemberDialogProps {
+interface EditMemberDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
+  member: ProjectMember | null
   onSuccess?: () => void
 }
 
-export function AddMemberDialog({ open, onOpenChange, projectId, onSuccess }: AddMemberDialogProps) {
-  const [formData, setFormData] = useState<AddMemberData>({
-    email: "",
+export function EditMemberDialog({ open, onOpenChange, projectId, member, onSuccess }: EditMemberDialogProps) {
+  const [formData, setFormData] = useState<UpdateMemberData>({
     role: "DEVELOPER",
   })
   
-  const { addMember, loading, error } = useProjectMembers(projectId)
+  const { updateMember, loading, error } = useProjectMembers(projectId)
+
+  // 当成员数据变化时更新表单
+  useEffect(() => {
+    if (member && member.role !== "OWNER") {
+      setFormData({
+        role: member.role as "ADMIN" | "DEVELOPER" | "REVIEWER" | "VIEWER",
+      })
+    }
+  }, [member])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.email) {
+    if (!member) {
       return
     }
 
-    const member = await addMember(formData)
-    if (member) {
-      setFormData({
-        email: "",
-        role: "DEVELOPER",
-      })
+    const updatedMember = await updateMember(member.id, formData)
+    if (updatedMember) {
       onOpenChange(false)
       onSuccess?.()
     }
@@ -62,33 +66,45 @@ export function AddMemberDialog({ open, onOpenChange, projectId, onSuccess }: Ad
     }
   }
 
+  // 如果是项目所有者，不允许编辑
+  if (member?.role === "OWNER") {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>编辑成员角色</DialogTitle>
+            <DialogDescription>
+              项目所有者的角色不能修改
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground">
+              {member.user.name || member.user.email} 是项目所有者，拥有最高权限，无法修改角色。
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              关闭
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>添加团队成员</DialogTitle>
+          <DialogTitle>编辑成员角色</DialogTitle>
           <DialogDescription>
-            添加已注册用户到项目团队。用户需要先在平台注册账户才能被添加。
+            修改 {member?.user.name || member?.user.email} 的项目角色
           </DialogDescription>
         </DialogHeader>
+        
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="member-email">邮箱地址 *</Label>
-            <Input
-              id="member-email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-              placeholder="已注册用户的邮箱地址"
-              required
-            />
-            <p className="text-xs text-muted-foreground">
-              请输入已在平台注册的用户邮箱地址
-            </p>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="member-role">角色权限</Label>
+            <Label htmlFor="edit-member-role">角色权限</Label>
             <Select value={formData.role} onValueChange={(value: any) => setFormData(prev => ({ ...prev, role: value }))}>
               <SelectTrigger>
                 <SelectValue />
@@ -128,7 +144,7 @@ export function AddMemberDialog({ open, onOpenChange, projectId, onSuccess }: Ad
             取消
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "添加中..." : "添加成员"}
+            {loading ? "保存中..." : "保存更改"}
           </Button>
         </div>
       </DialogContent>

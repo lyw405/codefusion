@@ -1,8 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
+import { useProjectDetail } from "@/hooks/useProjectDetail"
 
 // 导入组件
 import { ProjectHeader } from "./components/ProjectHeader"
@@ -14,30 +17,52 @@ import { Deployments } from "./components/Deployments"
 
 // 导入对话框组件
 import { CreatePRDialog } from "./components/dialogs/CreatePRDialog"
-import { AddMemberDialog } from "./components/dialogs/AddMemberDialog"
-import { AddRepositoryDialog } from "./components/dialogs/AddRepositoryDialog"
+
+
 import { ProjectSettingsDialog } from "./components/dialogs/ProjectSettingsDialog"
 
-// 导入类型和数据
-import { NewRepository, NewMember, NewPR } from "./types"
-import { createMockProject } from "./data/mockData"
-import { mockProjectDeployments, mockDeploymentHistory } from "./data/deploymentData"
+// 导入类型
+import { NewPR } from "./types"
 
 export default function ProjectDetailPage() {
   const params = useParams()
+  const router = useRouter()
   const projectId = params.id as string
   
   const [activeTab, setActiveTab] = useState("overview")
-  const [isStarred, setIsStarred] = useState(true)
+  const [isStarred, setIsStarred] = useState(false)
   
   // 对话框状态
-  const [isAddRepositoryOpen, setIsAddRepositoryOpen] = useState(false)
-  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false)
   const [isCreatePROpen, setIsCreatePROpen] = useState(false)
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
   
-  // 模拟项目数据
-  const project = createMockProject(projectId)
+  // 使用真实的项目数据
+  const { project, loading, error, refreshProject } = useProjectDetail(projectId)
+
+  // 如果出现错误，显示错误信息
+  if (error) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="text-center py-12">
+          <div className="text-red-500 text-lg mb-2">加载失败</div>
+          <div className="text-muted-foreground mb-4">{error}</div>
+          <Button onClick={refreshProject}>重试</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // 如果正在加载，显示加载状态
+  if (loading || !project) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin mr-2" />
+          <span>加载项目信息...</span>
+        </div>
+      </div>
+    )
+  }
 
   // 事件处理函数
   const handleToggleStar = () => {
@@ -49,15 +74,9 @@ export default function ProjectDetailPage() {
     // 这里可以添加创建PR的逻辑
   }
 
-  const handleAddMember = (memberData: NewMember) => {
-    console.log("添加成员:", memberData)
-    // 这里可以添加添加成员的逻辑
-  }
 
-  const handleAddRepository = (repositoryData: NewRepository) => {
-    console.log("添加仓库:", repositoryData)
-    // 这里可以添加添加仓库的逻辑
-  }
+
+
 
   const handleAddProject = () => {
     console.log("添加项目")
@@ -73,8 +92,17 @@ export default function ProjectDetailPage() {
     // 这里可以添加回滚逻辑
   }
 
+  // 构建统计数据
+  const stats = {
+    totalDeployments: project.totalDeployments,
+    successRate: project.successRate,
+    members: project._count.members,
+    repositories: project._count.repositories,
+    deployments: project._count.deployments,
+  }
+
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <div className="space-y-8">
       {/* 项目头部 */}
       <ProjectHeader
         project={project}
@@ -103,12 +131,13 @@ export default function ProjectDetailPage() {
 
         {/* 概览标签页 */}
         <TabsContent value="overview" className="space-y-8">
-          <ProjectStats stats={project.stats} />
+          <ProjectStats stats={stats} />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <RecentActivities activities={project.recentActivities} />
+            <RecentActivities activities={project.activities} />
             <TeamMembers 
-              members={project.members} 
-              onAddMember={() => setIsAddMemberOpen(true)} 
+              projectId={project.id}
+              members={project.members}
+              onMembersChange={refreshProject}
             />
           </div>
         </TabsContent>
@@ -116,25 +145,26 @@ export default function ProjectDetailPage() {
         {/* 成员标签页 */}
         <TabsContent value="members" className="space-y-8">
           <TeamMembers 
-            members={project.members} 
-            onAddMember={() => setIsAddMemberOpen(true)} 
+            projectId={project.id}
+            members={project.members}
+            onMembersChange={refreshProject}
           />
         </TabsContent>
 
         {/* 仓库标签页 */}
         <TabsContent value="repositories" className="space-y-8">
           <Repositories 
-            repositories={project.repositories} 
-            onAddRepository={() => setIsAddRepositoryOpen(true)} 
+            projectId={project.id}
+            repositories={project.repositories}
+            onRepositoriesChange={refreshProject}
           />
         </TabsContent>
 
         {/* 部署标签页 */}
         <TabsContent value="deployments" className="space-y-8">
           <Deployments 
-            projectDeployments={mockProjectDeployments}
-            deploymentHistory={mockDeploymentHistory}
-            onAddProject={handleAddProject}
+            projectDeployments={project.deployments}
+            deploymentHistory={project.deployments}
             onRollback={handleRollback}
           />
         </TabsContent>
@@ -149,22 +179,15 @@ export default function ProjectDetailPage() {
         onSubmit={handleCreatePR}
       />
 
-      <AddMemberDialog
-        open={isAddMemberOpen}
-        onOpenChange={setIsAddMemberOpen}
-        onSubmit={handleAddMember}
-      />
 
-      <AddRepositoryDialog
-        open={isAddRepositoryOpen}
-        onOpenChange={setIsAddRepositoryOpen}
-        onSubmit={handleAddRepository}
-      />
+
+
 
       <ProjectSettingsDialog
         open={isProjectSettingsOpen}
         onOpenChange={setIsProjectSettingsOpen}
         project={project}
+        onSave={refreshProject}
       />
 
 

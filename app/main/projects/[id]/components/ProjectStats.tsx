@@ -2,31 +2,24 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { 
-  GitCommit, 
   Rocket, 
   CheckCircle, 
-  AlertCircle
+  Users,
+  FolderGit2
 } from "lucide-react"
 
 interface ProjectStatsProps {
   stats: {
-    totalCommits: number
     totalDeployments: number
     successRate: number
-    openIssues: number
-    resolvedIssues: number
+    members: number
+    repositories: number
+    deployments: number
   }
 }
 
 export function ProjectStats({ stats }: ProjectStatsProps) {
   const statItems = [
-    {
-      title: "总提交",
-      value: stats.totalCommits.toLocaleString(),
-      icon: GitCommit,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50"
-    },
     {
       title: "总部署",
       value: stats.totalDeployments.toLocaleString(),
@@ -36,17 +29,24 @@ export function ProjectStats({ stats }: ProjectStatsProps) {
     },
     {
       title: "成功率",
-      value: `${stats.successRate}%`,
+      value: `${stats.successRate.toFixed(1)}%`,
       icon: CheckCircle,
       color: "text-green-600",
       bgColor: "bg-green-50"
     },
     {
-      title: "待处理问题",
-      value: stats.openIssues.toString(),
-      icon: AlertCircle,
-      color: "text-red-600",
-      bgColor: "bg-red-50"
+      title: "团队成员",
+      value: stats.members.toString(),
+      icon: Users,
+      color: "text-orange-600",
+      bgColor: "bg-orange-50"
+    },
+    {
+      title: "代码仓库",
+      value: stats.repositories.toString(),
+      icon: FolderGit2,
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-50"
     }
   ]
 
