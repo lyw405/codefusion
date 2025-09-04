@@ -80,10 +80,22 @@ export function ProjectSettingsDialog({ open, onOpenChange, project, onSave }: P
             <Textarea
               id="project-description"
               value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="输入项目描述"
+              onChange={(e) => {
+                const value = e.target.value
+                if (value.length <= 300) {
+                  setFormData(prev => ({ ...prev, description: value }))
+                }
+              }}
+              placeholder="输入项目描述（最大300字符）"
               rows={3}
+              maxLength={300}
             />
+            <div className="flex justify-between text-xs text-gray-500">
+              <span>描述项目的目的、功能和技术栈等信息</span>
+              <span className={formData.description.length > 280 ? "text-orange-500" : ""}>
+                {formData.description.length}/300
+              </span>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

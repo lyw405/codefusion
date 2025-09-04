@@ -4,8 +4,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { 
   Rocket, 
   CheckCircle, 
-  Users,
-  FolderGit2
+  Users
 } from "lucide-react"
 
 interface ProjectStatsProps {
@@ -14,7 +13,6 @@ interface ProjectStatsProps {
     successRate: number
     members: number
     repositories: number
-    deployments: number
   }
 }
 
@@ -40,18 +38,11 @@ export function ProjectStats({ stats }: ProjectStatsProps) {
       icon: Users,
       color: "text-orange-600",
       bgColor: "bg-orange-50"
-    },
-    {
-      title: "代码仓库",
-      value: stats.repositories.toString(),
-      icon: FolderGit2,
-      color: "text-indigo-600",
-      bgColor: "bg-indigo-50"
     }
   ]
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       {statItems.map((item, index) => {
         const Icon = item.icon
         return (

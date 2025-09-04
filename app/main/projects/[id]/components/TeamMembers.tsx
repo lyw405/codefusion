@@ -132,7 +132,7 @@ export function TeamMembers({ projectId, members, onAddMember, onMembersChange }
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {error && (
             <div className="mb-4 p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
               <AlertCircle className="h-4 w-4" />

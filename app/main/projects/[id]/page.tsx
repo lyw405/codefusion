@@ -13,16 +13,12 @@ import { ProjectStats } from "./components/ProjectStats"
 import { RecentActivities } from "./components/RecentActivities"
 import { TeamMembers } from "./components/TeamMembers"
 import { Repositories } from "./components/Repositories"
-import { Deployments } from "./components/Deployments"
-
 // 导入对话框组件
-import { CreatePRDialog } from "./components/dialogs/CreatePRDialog"
 
 
 import { ProjectSettingsDialog } from "./components/dialogs/ProjectSettingsDialog"
 
-// 导入类型
-import { NewPR } from "./types"
+
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -33,7 +29,6 @@ export default function ProjectDetailPage() {
   const [isStarred, setIsStarred] = useState(false)
   
   // 对话框状态
-  const [isCreatePROpen, setIsCreatePROpen] = useState(false)
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false)
   
   // 使用真实的项目数据
@@ -69,28 +64,19 @@ export default function ProjectDetailPage() {
     setIsStarred(!isStarred)
   }
 
-  const handleCreatePR = (prData: NewPR) => {
-    console.log("创建PR:", prData)
-    // 这里可以添加创建PR的逻辑
-  }
 
 
 
 
 
-  const handleAddProject = () => {
-    console.log("添加项目")
-    // 这里可以添加添加项目的逻辑
-  }
 
 
 
 
 
-  const handleRollback = (deploymentId: string) => {
-    console.log("回滚部署:", deploymentId)
-    // 这里可以添加回滚逻辑
-  }
+
+
+
 
   // 构建统计数据
   const stats = {
@@ -98,7 +84,6 @@ export default function ProjectDetailPage() {
     successRate: project.successRate,
     members: project._count.members,
     repositories: project._count.repositories,
-    deployments: project._count.deployments,
   }
 
   return (
@@ -109,12 +94,11 @@ export default function ProjectDetailPage() {
         isStarred={isStarred}
         onToggleStar={handleToggleStar}
         onOpenSettings={() => setIsProjectSettingsOpen(true)}
-        onOpenCreatePR={() => setIsCreatePROpen(true)}
       />
 
       {/* 标签页内容 */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-        <TabsList className="grid w-full grid-cols-4 h-14 tabs-container-minimal">
+        <TabsList className="grid w-full grid-cols-3 h-14 tabs-container-minimal">
           <TabsTrigger value="overview" className="tab-trigger-minimal">
             概览
           </TabsTrigger>
@@ -123,9 +107,6 @@ export default function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="repositories" className="tab-trigger-minimal">
             仓库
-          </TabsTrigger>
-          <TabsTrigger value="deployments" className="tab-trigger-minimal">
-            部署
           </TabsTrigger>
         </TabsList>
 
@@ -160,24 +141,10 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
-        {/* 部署标签页 */}
-        <TabsContent value="deployments" className="space-y-8">
-          <Deployments 
-            projectDeployments={project.deployments}
-            deploymentHistory={project.deployments}
-            onRollback={handleRollback}
-          />
-        </TabsContent>
+
       </Tabs>
 
-      {/* 对话框组件 */}
-      <CreatePRDialog
-        open={isCreatePROpen}
-        onOpenChange={setIsCreatePROpen}
-        members={project.members}
-        repositories={project.repositories}
-        onSubmit={handleCreatePR}
-      />
+
 
 
 
