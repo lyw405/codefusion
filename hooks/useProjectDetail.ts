@@ -112,7 +112,14 @@ export function useProjectDetail(projectId: string) {
 
   // 获取项目详情
   const fetchProject = useCallback(async () => {
-    if (!session?.user?.email || !projectId) {
+    if (!projectId) {
+      return
+    }
+
+    // 开发环境：即使没有session也尝试获取数据
+    if (process.env.NODE_ENV === "development" && !session?.user?.email) {
+      console.log("开发环境：绕过session检查，直接获取项目详情")
+    } else if (!session?.user?.email) {
       return
     }
 
@@ -134,7 +141,7 @@ export function useProjectDetail(projectId: string) {
     } finally {
       setLoading(false)
     }
-  }, [session?.user?.email, projectId])
+  }, [projectId])
 
   // 更新项目信息
   const updateProject = useCallback(

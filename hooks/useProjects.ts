@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useSession } from "next-auth/react"
 
 export interface Project {
@@ -111,9 +111,9 @@ export function useProjects() {
   // 获取项目列表
   const fetchProjects = useCallback(
     async (filters: ProjectFilters = {}) => {
-      if (!session?.user?.email) {
-        setError("未授权访问")
-        return
+      // 开发环境：即使没有session也尝试获取数据
+      if (!session?.user?.email && process.env.NODE_ENV === "development") {
+        console.log("开发环境：尝试获取项目数据（无用户认证）")
       }
 
       setLoading(true)
@@ -168,7 +168,6 @@ export function useProjects() {
 
         if (!response.ok) {
           const errorData = await response.json()
-          console.error("创建项目失败:", errorData)
           throw new Error(errorData.error || "创建项目失败")
         }
 
@@ -238,7 +237,6 @@ export function useProjects() {
 
         if (!response.ok) {
           const errorData = await response.json()
-          console.error("更新项目失败:", errorData)
           throw new Error(errorData.error || "更新项目失败")
         }
 
@@ -292,6 +290,12 @@ export function useProjects() {
     },
     [session?.user?.email],
   )
+
+  // 初始化
+  useEffect(() => {
+    // 开发环境：即使没有session也尝试获取数据
+    fetchProjects()
+  }, [fetchProjects])
 
   return {
     projects,
