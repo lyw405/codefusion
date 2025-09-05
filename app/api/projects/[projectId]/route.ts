@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { z } from "zod"
+import { getCurrentUser, ApiError } from "@/lib/utils/auth"
 
 // 更新项目的验证模式
 const updateProjectSchema = z.object({
@@ -32,21 +33,13 @@ export async function GET(
   { params }: { params: { projectId: string } },
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
+    const user = await getCurrentUser()
+    if (!user) {
+      const error = ApiError.notFound("系统中没有用户")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     const { projectId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
 
     // 获取项目详情（包括权限检查）
     const project = await prisma.project.findFirst({
@@ -82,7 +75,6 @@ export async function GET(
           orderBy: { createdAt: "desc" },
           take: 20,
         },
-        projectSettings: true,
         _count: {
           select: {
             members: true,
@@ -95,10 +87,8 @@ export async function GET(
     })
 
     if (!project) {
-      return NextResponse.json(
-        { error: "项目不存在或无权限访问" },
-        { status: 404 },
-      )
+      const error = ApiError.notFound("项目不存在或无权限访问")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     return NextResponse.json({ project })
@@ -116,21 +106,19 @@ export async function PUT(
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
+      const error = ApiError.unauthorized()
+      return NextResponse.json({ error: error.error }, { status: error.status })
+    }
+
+    const user = await getCurrentUser()
+    if (!user) {
+      const error = ApiError.notFound("用户不存在")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     const { projectId } = params
     const body = await request.json()
     const validatedData = updateProjectSchema.parse(body)
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
 
     // 检查项目是否存在和权限
     const existingProject = await prisma.project.findFirst({
@@ -148,10 +136,8 @@ export async function PUT(
     })
 
     if (!existingProject) {
-      return NextResponse.json(
-        { error: "项目不存在或无权限修改" },
-        { status: 404 },
-      )
+      const error = ApiError.notFound("项目不存在或无权限修改")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     // 如果更新 slug，检查是否已存在
@@ -161,7 +147,11 @@ export async function PUT(
       })
 
       if (slugExists) {
-        return NextResponse.json({ error: "项目标识已存在" }, { status: 400 })
+        const error = ApiError.badRequest("项目标识已存在")
+        return NextResponse.json(
+          { error: error.error },
+          { status: error.status },
+        )
       }
     }
 
@@ -222,19 +212,17 @@ export async function DELETE(
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
+      const error = ApiError.unauthorized()
+      return NextResponse.json({ error: error.error }, { status: error.status })
+    }
+
+    const user = await getCurrentUser()
+    if (!user) {
+      const error = ApiError.notFound("用户不存在")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     const { projectId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
 
     // 检查项目是否存在和权限（只有所有者可以删除）
     const existingProject = await prisma.project.findFirst({
@@ -245,10 +233,8 @@ export async function DELETE(
     })
 
     if (!existingProject) {
-      return NextResponse.json(
-        { error: "项目不存在或无权限删除" },
-        { status: 404 },
-      )
+      const error = ApiError.notFound("项目不存在或无权限删除")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     // 删除项目（由于有外键约束，相关数据会被级联删除）

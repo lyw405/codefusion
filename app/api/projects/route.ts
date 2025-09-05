@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { z } from "zod"
+import { getCurrentUser, ApiError, handleApiError } from "@/lib/utils/auth"
 
 // 创建项目的验证模式
 const createProjectSchema = z.object({
@@ -28,9 +29,10 @@ const createProjectSchema = z.object({
 // 获取项目列表
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
+    const user = await getCurrentUser()
+    if (!user) {
+      const error = ApiError.notFound("没有找到用户")
+      return NextResponse.json({ error: error.error }, { status: error.status })
     }
 
     const { searchParams } = new URL(request.url)
@@ -40,17 +42,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status") || ""
     const visibility = searchParams.get("visibility") || ""
 
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
     // 构建查询条件
-    const where: any = {}
+    const where: Record<string, any> = {}
 
     if (search) {
       where.OR = [
@@ -67,44 +60,55 @@ export async function GET(request: NextRequest) {
       where.visibility = visibility
     }
 
-    // 获取用户有权限的项目（作为所有者或成员）
-    const userProjects = await prisma.project.findMany({
-      where: {
-        OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
-        ...where,
-      },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        members: {
-          include: {
-            user: {
-              select: { id: true, name: true, email: true, image: true },
+    const baseWhere = {
+      OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
+      ...where,
+    }
+
+    // 并行执行查询和计数
+    const [userProjects, total] = await Promise.all([
+      prisma.project.findMany({
+        where: baseWhere,
+        include: {
+          owner: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          members: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+          },
+          repositories: {
+            select: {
+              id: true,
+              name: true,
+              provider: true,
+              url: true,
+              defaultBranch: true,
+              isCloned: true,
+              localPath: true,
+              lastSyncAt: true,
+              createdAt: true,
+            },
+          },
+          _count: {
+            select: {
+              members: true,
+              repositories: true,
+              deployments: true,
             },
           },
         },
-        repositories: true,
-        _count: {
-          select: {
-            members: true,
-            repositories: true,
-            deployments: true,
-          },
-        },
-      },
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { updatedAt: "desc" },
-    })
-
-    // 获取总数
-    const total = await prisma.project.count({
-      where: {
-        OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
-        ...where,
-      },
-    })
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { updatedAt: "desc" },
+      }),
+      prisma.project.count({
+        where: baseWhere,
+      }),
+    ])
 
     return NextResponse.json({
       projects: userProjects,
@@ -116,8 +120,11 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("获取项目列表失败:", error)
-    return NextResponse.json({ error: "获取项目列表失败" }, { status: 500 })
+    const apiError = handleApiError(error, "获取项目列表失败")
+    return NextResponse.json(
+      { error: apiError.error },
+      { status: apiError.status },
+    )
   }
 }
 
@@ -192,7 +199,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.error("创建项目失败:", error)
-    return NextResponse.json({ error: "创建项目失败" }, { status: 500 })
+    const apiError = handleApiError(error, "创建项目失败")
+    return NextResponse.json(
+      { error: apiError.error },
+      { status: apiError.status },
+    )
   }
 }
