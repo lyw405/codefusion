@@ -323,10 +323,9 @@ enum DeploymentEnvironment {
 
 enum DeploymentStatus {
   PENDING      // 等待中
-  BUILDING     // 构建中
-  DEPLOYING    // 部署中
-  SUCCESS      // 成功
-  FAILED       // 失败
+  RUNNING      // 执行中
+  SUCCESS      // 部署成功
+  FAILED       // 部署失败
   CANCELLED    // 已取消
 }
 
