@@ -23,6 +23,19 @@ export function VirtualScroll({
   const [scrollTop, setScrollTop] = useState(0)
   const scrollElementRef = useRef<HTMLDivElement>(null)
 
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const newScrollTop = e.currentTarget.scrollTop
+    setScrollTop(newScrollTop)
+    
+    // 开发环境下的调试信息
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('VirtualScroll:', {
+        scrollTop: newScrollTop,
+        totalItems: items?.length || 0
+      })
+    }
+  }, [items?.length])
+
   // 边界检查
   if (!items || items.length === 0) {
     return (
@@ -49,22 +62,6 @@ export function VirtualScroll({
 
   // 可见项目
   const visibleItems = items.slice(startIndex, endIndex + 1)
-
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const newScrollTop = e.currentTarget.scrollTop
-    setScrollTop(newScrollTop)
-    
-    // 开发环境下的调试信息
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('VirtualScroll:', {
-        scrollTop: newScrollTop,
-        startIndex,
-        endIndex,
-        visibleItems: visibleItems.length,
-        totalItems: items.length
-      })
-    }
-  }, [startIndex, endIndex, visibleItems.length, items.length])
 
   return (
     <div

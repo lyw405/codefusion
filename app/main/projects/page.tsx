@@ -269,7 +269,7 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>确认删除项目</DialogTitle>
             <DialogDescription>
-              您确定要删除项目 "{projectToDelete?.name}" 吗？此操作不可撤销，将会删除项目的所有数据，包括成员、仓库、部署记录等。
+              您确定要删除项目 &ldquo;{projectToDelete?.name}&rdquo; 吗？此操作不可撤销，将会删除项目的所有数据，包括成员、仓库、部署记录等。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

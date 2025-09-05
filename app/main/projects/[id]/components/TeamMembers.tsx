@@ -251,7 +251,7 @@ export function TeamMembers({ projectId, members, onAddMember, onMembersChange }
           <DialogHeader>
             <DialogTitle>移除成员</DialogTitle>
             <DialogDescription>
-              确定要移除成员 "{selectedMember?.user.name || selectedMember?.user.email}" 吗？此操作不可撤销。
+              确定要移除成员 &ldquo;{selectedMember?.user.name || selectedMember?.user.email}&rdquo; 吗？此操作不可撤销。
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 mt-4">

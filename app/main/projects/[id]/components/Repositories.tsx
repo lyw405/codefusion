@@ -237,7 +237,7 @@ export function Repositories({ projectId, repositories, onAddRepository, onRepos
           <DialogHeader>
             <DialogTitle>删除仓库</DialogTitle>
             <DialogDescription>
-              确定要删除仓库 "{selectedRepository?.name}" 吗？此操作不可撤销。
+              确定要删除仓库 &ldquo;{selectedRepository?.name}&rdquo; 吗？此操作不可撤销。
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 mt-4">
