@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +40,37 @@ export function CreatePRDialog({ open, onOpenChange, members, repositories, onSu
     baseBranch: "main",
     reviewer: ""
   })
+  
+  const [branches, setBranches] = useState<string[]>([])
+  const [loadingBranches, setLoadingBranches] = useState(false)
+  
+  // 获取分支列表
+  const fetchBranches = async (repositoryId: string) => {
+    if (!repositoryId) {
+      setBranches([])
+      return
+    }
+    
+    setLoadingBranches(true)
+    try {
+      const response = await fetch(`/api/repositories/${repositoryId}/branches`)
+      if (response.ok) {
+        const data = await response.json()
+        setBranches(data.branches?.map((b: any) => b.name) || [])
+      }
+    } catch (error) {
+      console.error("获取分支失败:", error)
+    } finally {
+      setLoadingBranches(false)
+    }
+  }
+  
+  // 监听仓库变化
+  useEffect(() => {
+    if (newPR.repository) {
+      fetchBranches(newPR.repository)
+    }
+  }, [newPR.repository])
 
   const handleSubmit = () => {
     onSubmit(newPR)
@@ -100,25 +131,41 @@ export function CreatePRDialog({ open, onOpenChange, members, repositories, onSu
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="pr-branch">分支</Label>
-              <Input
-                id="pr-branch"
-                value={newPR.branch}
-                onChange={(e) => setNewPR(prev => ({ ...prev, branch: e.target.value }))}
-                placeholder="feature/xxx"
-              />
+              <Label htmlFor="pr-branch">源分支</Label>
+              <Select 
+                value={newPR.branch} 
+                onValueChange={(value) => setNewPR(prev => ({ ...prev, branch: value }))}
+                disabled={!newPR.repository || loadingBranches}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingBranches ? "加载中..." : "选择源分支"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.filter(branch => branch !== newPR.baseBranch).map(branch => (
+                    <SelectItem key={branch} value={branch}>
+                      {branch}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="pr-base-branch">目标分支</Label>
-            <Select value={newPR.baseBranch} onValueChange={(value) => setNewPR(prev => ({ ...prev, baseBranch: value }))}>
+            <Select 
+              value={newPR.baseBranch} 
+              onValueChange={(value) => setNewPR(prev => ({ ...prev, baseBranch: value }))}
+              disabled={!newPR.repository || loadingBranches}
+            >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={loadingBranches ? "加载中..." : "选择目标分支"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="main">main</SelectItem>
-                <SelectItem value="develop">develop</SelectItem>
-                <SelectItem value="staging">staging</SelectItem>
+                {branches.filter(branch => branch !== newPR.branch).map(branch => (
+                  <SelectItem key={branch} value={branch}>
+                    {branch}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

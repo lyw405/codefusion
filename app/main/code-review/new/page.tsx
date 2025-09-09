@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MarkdownPreview } from "../components/MarkdownPreview"
 import { CodeDiffViewer } from "../components/CodeDiffViewer"
@@ -23,10 +23,14 @@ import {
   Code,
   Check,
   Settings,
-  Star
+  Star,
+  Loader2,
+  AlertCircle
 } from "lucide-react"
 import { PageHeader } from "../components/common/PageHeader"
 import { Badge } from "@/components/ui/badge"
+import { usePRData } from "@/hooks/usePRData"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function NewPRPage() {
   const [selectedProject, setSelectedProject] = useState("")
@@ -59,54 +63,17 @@ Related to #124`)
   const [selectedReviewers, setSelectedReviewers] = useState<string[]>([])
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
 
-  // 模拟项目数据
-  const mockProjects = [
-    {
-      id: "1",
-      name: "电商平台",
-      description: "基于 Next.js 的现代化电商平台",
-      repositories: [
-        { id: "1", name: "frontend", provider: "GITHUB", url: "https://github.com/org/frontend", defaultBranch: "main" },
-        { id: "2", name: "backend", provider: "GITHUB", url: "https://github.com/org/backend", defaultBranch: "main" },
-        { id: "3", name: "mobile", provider: "GITHUB", url: "https://github.com/org/mobile", defaultBranch: "main" }
-      ],
-      members: [
-        { id: "1", name: "张三", email: "zhang@example.com", role: "OWNER", avatar: null },
-        { id: "2", name: "李四", email: "li@example.com", role: "DEVELOPER", avatar: null },
-        { id: "3", name: "王五", email: "wang@example.com", role: "REVIEWER", avatar: null }
-      ]
-    },
-    {
-      id: "2", 
-      name: "数据分析平台",
-      description: "Python + React 数据分析平台",
-      repositories: [
-        { id: "4", name: "analytics-api", provider: "GITHUB", url: "https://github.com/org/analytics-api", defaultBranch: "main" },
-        { id: "5", name: "analytics-web", provider: "GITHUB", url: "https://github.com/org/analytics-web", defaultBranch: "main" }
-      ],
-      members: [
-        { id: "4", name: "陈七", email: "chen@example.com", role: "OWNER", avatar: null },
-        { id: "5", name: "刘八", email: "liu@example.com", role: "DEVELOPER", avatar: null }
-      ]
-    }
-  ]
-
-  // 根据选择的项目和仓库动态获取分支
-  const getBranchesForRepository = (_projectId: string, _repositoryId: string) => {
-    const baseBranches = ["main", "develop"]
-    const featureBranches = [
-      "feature/user-auth",
-      "feature/db-optimization", 
-      "feature/payment-integration",
-      "fix/login-styles",
-      "hotfix/security-patch"
-    ]
-    return [...baseBranches, ...featureBranches]
-  }
-
-  const mockBranches = selectedProject && selectedRepository 
-    ? getBranchesForRepository(selectedProject, selectedRepository)
-    : []
+  // 使用真实的数据 hook
+  const {
+    projects,
+    projectsLoading,
+    getProjectRepositories,
+    getProjectReviewers,
+    branches,
+    loadingBranches,
+    branchError,
+    fetchBranches,
+  } = usePRData()
 
   // 模拟diff文件数据
   const mockDiffFiles: DiffFile[] = [
@@ -185,19 +152,11 @@ Related to #124`)
     }
   ]
 
-  // 根据选择的项目获取团队成员作为评审者
-  const getProjectReviewers = () => {
-    const project = mockProjects.find(p => p.id === selectedProject)
-    return project ? project.members.filter(member => member.role !== "VIEWER") : []
-  }
-
-  const mockReviewers = getProjectReviewers()
-
-  // 根据选择的项目获取仓库列表
-  const getProjectRepositories = () => {
-    const project = mockProjects.find(p => p.id === selectedProject)
-    return project ? project.repositories : []
-  }
+  // 获取当前项目的仓库列表
+  const currentRepositories = selectedProject ? getProjectRepositories(selectedProject) : []
+  
+  // 获取当前项目的审查者列表
+  const currentReviewers = selectedProject ? getProjectReviewers(selectedProject) : []
 
   // 处理项目选择变化
   const handleProjectChange = (projectId: string) => {
@@ -212,8 +171,21 @@ Related to #124`)
   const handleRepositoryChange = (repositoryId: string) => {
     setSelectedRepository(repositoryId)
     setSourceBranch("") // 重置分支选择
-    setTargetBranch("main") // 重置目标分支为默认
+    
+    // 获取仓库的默认分支作为目标分支
+    const repository = currentRepositories.find(repo => repo.id === repositoryId)
+    setTargetBranch(repository?.defaultBranch || "main")
+    
+    // 获取该仓库的分支列表
+    fetchBranches(repositoryId)
   }
+
+  // 监听仓库变化，自动获取分支
+  useEffect(() => {
+    if (selectedRepository) {
+      fetchBranches(selectedRepository)
+    }
+  }, [selectedRepository, fetchBranches])
 
   const mockLabels = [
     { name: "feature", color: "bg-blue-500", description: "新功能" },
@@ -289,14 +261,25 @@ Related to #124`)
                         <SelectValue placeholder="选择项目..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockProjects.map(project => (
-                          <SelectItem key={project.id} value={project.id}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{project.name}</span>
-                              <span className="text-xs text-muted-foreground">{project.description}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {projectsLoading ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="ml-2 text-sm">加载中...</span>
+                          </div>
+                        ) : projects.length === 0 ? (
+                          <div className="text-center p-4 text-muted-foreground">
+                            <span className="text-sm">暂无可用项目</span>
+                          </div>
+                        ) : (
+                          projects.map(project => (
+                            <SelectItem key={project.id} value={project.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{project.name}</span>
+                                <span className="text-xs text-muted-foreground">{project.description}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -312,14 +295,20 @@ Related to #124`)
                         <SelectValue placeholder={selectedProject ? "选择仓库..." : "请先选择项目"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {getProjectRepositories().map(repo => (
-                          <SelectItem key={repo.id} value={repo.id}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{repo.name}</span>
-                              <span className="text-xs text-muted-foreground">{repo.provider}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {currentRepositories.length === 0 ? (
+                          <div className="text-center p-4 text-muted-foreground">
+                            <span className="text-sm">该项目暂无仓库</span>
+                          </div>
+                        ) : (
+                          currentRepositories.map(repo => (
+                            <SelectItem key={repo.id} value={repo.id}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{repo.name}</span>
+                                <span className="text-xs text-muted-foreground">{repo.provider}</span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -336,40 +325,84 @@ Related to #124`)
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* 分支错误提示 */}
+                    {branchError && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{branchError}</AlertDescription>
+                      </Alert>
+                    )}
+                    
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="source-branch">源分支</Label>
-                        <Select value={sourceBranch} onValueChange={setSourceBranch}>
+                        <Select 
+                          value={sourceBranch} 
+                          onValueChange={setSourceBranch}
+                          disabled={!selectedRepository || loadingBranches}
+                        >
                           <SelectTrigger>
-                            <SelectValue placeholder="选择源分支" />
+                            <SelectValue placeholder={loadingBranches ? "加载中..." : "选择源分支"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {mockBranches.filter(branch => branch !== targetBranch).map(branch => (
-                              <SelectItem key={branch} value={branch}>
-                                <div className="flex items-center gap-2">
-                                  <GitBranch className="h-3 w-3" />
-                                  {branch}
-                                </div>
-                              </SelectItem>
-                            ))}
+                            {loadingBranches ? (
+                              <div className="flex items-center justify-center p-4">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span className="ml-2 text-sm">加载中...</span>
+                              </div>
+                            ) : branches.length === 0 ? (
+                              <div className="text-center p-4 text-muted-foreground">
+                                <span className="text-sm">暂无可用分支</span>
+                              </div>
+                            ) : (
+                              branches.filter(branch => branch.name !== targetBranch).map(branch => (
+                                <SelectItem key={branch.name} value={branch.name}>
+                                  <div className="flex items-center gap-2">
+                                    <GitBranch className="h-3 w-3" />
+                                    <span>{branch.name}</span>
+                                    {branch.isDefault && (
+                                      <Badge variant="outline" className="text-xs">默认</Badge>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="target-branch">目标分支</Label>
-                        <Select value={targetBranch} onValueChange={setTargetBranch}>
+                        <Select 
+                          value={targetBranch} 
+                          onValueChange={setTargetBranch}
+                          disabled={!selectedRepository || loadingBranches}
+                        >
                           <SelectTrigger>
-                            <SelectValue placeholder="选择目标分支" />
+                            <SelectValue placeholder={loadingBranches ? "加载中..." : "选择目标分支"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {mockBranches.filter(branch => branch !== sourceBranch).map(branch => (
-                              <SelectItem key={branch} value={branch}>
-                                <div className="flex items-center gap-2">
-                                  <GitBranch className="h-3 w-3" />
-                                  {branch}
-                                </div>
-                              </SelectItem>
-                            ))}
+                            {loadingBranches ? (
+                              <div className="flex items-center justify-center p-4">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span className="ml-2 text-sm">加载中...</span>
+                              </div>
+                            ) : branches.length === 0 ? (
+                              <div className="text-center p-4 text-muted-foreground">
+                                <span className="text-sm">暂无可用分支</span>
+                              </div>
+                            ) : (
+                              branches.filter(branch => branch.name !== sourceBranch).map(branch => (
+                                <SelectItem key={branch.name} value={branch.name}>
+                                  <div className="flex items-center gap-2">
+                                    <GitBranch className="h-3 w-3" />
+                                    <span>{branch.name}</span>
+                                    {branch.isDefault && (
+                                      <Badge variant="outline" className="text-xs">默认</Badge>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
@@ -496,13 +529,13 @@ Related to #124`)
                   <p className="text-sm">请先选择项目</p>
                   <p className="text-xs">项目成员将作为可选审查者</p>
                 </div>
-              ) : mockReviewers.length === 0 ? (
+              ) : currentReviewers.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground">
                   <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">该项目暂无可用审查者</p>
                 </div>
               ) : (
-                mockReviewers.map((reviewer) => (
+                currentReviewers.map((reviewer) => (
                   <div 
                     key={reviewer.id}
                     className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
@@ -513,11 +546,10 @@ Related to #124`)
                     onClick={() => toggleReviewer(reviewer.id)}
                   >
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src={reviewer.avatar || undefined} />
-                      <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
+                      <AvatarFallback>{reviewer.name?.[0] || reviewer.email[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <p className="text-sm font-medium">{reviewer.name}</p>
+                      <p className="text-sm font-medium">{reviewer.name || reviewer.email}</p>
                       <p className="text-xs text-muted-foreground">{reviewer.email}</p>
                       <p className="text-xs text-blue-600">{reviewer.role}</p>
                     </div>
