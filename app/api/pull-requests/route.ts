@@ -1,9 +1,20 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { z } from "zod"
 import { getBranchDiffStats } from "@/lib/utils/git"
+import {
+  successResponse,
+  paginatedResponse,
+  createdResponse,
+  handleApiError,
+  withAuth,
+  pullRequestSchemas,
+  validateRequestBody,
+  validateSearchParams,
+  checkProjectAccess,
+  utils,
+  ApiError,
+} from "@/lib/api"
+import { z } from "zod"
 
 // 创建PR的验证模式
 const createPRSchema = z.object({
@@ -17,32 +28,11 @@ const createPRSchema = z.object({
   isDraft: z.boolean().optional().default(false),
 })
 
-// 获取PR列表
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
-
+// 获取 Pull Request 列表
+export const GET = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
     const { searchParams } = new URL(request.url)
-    const projectId = searchParams.get("projectId")
-    const status = searchParams.get("status") as
-      | "OPEN"
-      | "CLOSED"
-      | "MERGED"
-      | null
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "20")
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
+    const query = validateSearchParams(searchParams, pullRequestSchemas.list)
 
     // 构建查询条件 - 只显示与当前用户相关的PR
     const where: any = {
@@ -61,34 +51,29 @@ export async function GET(request: NextRequest) {
       ],
     }
 
-    if (projectId) {
+    if (query.projectId) {
       // 验证用户是否有项目访问权限
-      const project = await prisma.project.findFirst({
-        where: {
-          id: projectId,
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
-        },
-      })
-
-      if (!project) {
-        return NextResponse.json(
-          { error: "项目不存在或无权限访问" },
-          { status: 404 },
-        )
+      const hasAccess = await checkProjectAccess(user.id, query.projectId)
+      if (!hasAccess) {
+        throw ApiError.forbidden("项目不存在或无权限访问")
       }
-
-      where.projectId = projectId
+      where.projectId = query.projectId
     }
 
-    if (status) {
-      where.status = status
+    if (query.status) {
+      where.status = query.status
+    }
+
+    if (query.authorId) {
+      where.authorId = query.authorId
+    }
+
+    if (query.assigneeId) {
+      where.assigneeId = query.assigneeId
     }
 
     // 计算分页
-    const skip = (page - 1) * limit
+    const skip = (query.page! - 1) * query.limit!
 
     // 获取PR列表
     const [pullRequests, total] = await Promise.all([
@@ -107,21 +92,20 @@ export async function GET(request: NextRequest) {
           project: {
             select: { id: true, name: true, slug: true },
           },
-          // 暂时注释掉reviewers和comments的查询
-          // reviewers: {
-          //   include: {
-          //     reviewer: {
-          //       select: { id: true, name: true, email: true, image: true },
-          //     },
-          //   },
-          // },
-          // _count: {
-          //   select: { comments: true },
-          // },
+          reviewers: {
+            include: {
+              reviewer: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+          },
+          _count: {
+            select: { comments: true },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,
-        take: limit,
+        take: query.limit!,
       }),
       prisma.pullRequest.count({ where }),
     ])
@@ -129,50 +113,36 @@ export async function GET(request: NextRequest) {
     // 格式化响应数据
     const formattedPRs = pullRequests.map(pr => ({
       ...pr,
-      labels: pr.labels ? JSON.parse(pr.labels) : [],
-      reviewers: [], // 暂时返回空数组
-      commentCount: 0, // 暂时返回0
+      labels: utils.parseJsonSafely<string[]>(pr.labels, []),
+      reviewers: pr.reviewers.map(r => ({
+        ...r.reviewer,
+        status: r.status,
+        reviewedAt: r.reviewedAt,
+      })),
+      commentCount: pr._count.comments,
     }))
 
-    return NextResponse.json({
-      pullRequests: formattedPRs,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
-    console.error("获取PR列表失败:", error)
-    return NextResponse.json({ error: "获取PR列表失败" }, { status: 500 })
-  }
-}
+    // 构建分页信息
+    const pagination = utils.buildPagination(total, query.page!, query.limit!)
 
-// 创建新的PR
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+    return paginatedResponse(
+      formattedPRs,
+      pagination,
+      undefined,
+      "pullRequests",
+    )
+  }),
+)
 
-    const body = await request.json()
-    const validatedData = createPRSchema.parse(body)
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
+// 创建 Pull Request
+export const POST = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
+    const data = await validateRequestBody(request, pullRequestSchemas.create)
 
     // 验证仓库权限
     const repository = await prisma.repository.findFirst({
       where: {
-        id: validatedData.repositoryId,
+        id: data.repositoryId,
         project: {
           OR: [
             { ownerId: user.id },
@@ -186,40 +156,26 @@ export async function POST(request: NextRequest) {
     })
 
     if (!repository) {
-      return NextResponse.json(
-        { error: "仓库不存在或无权限访问" },
-        { status: 404 },
-      )
-    }
-
-    // 检查源分支和目标分支是否相同
-    if (validatedData.sourceBranch === validatedData.targetBranch) {
-      return NextResponse.json(
-        { error: "源分支和目标分支不能相同" },
-        { status: 400 },
-      )
+      throw ApiError.notFound("仓库不存在或无权限访问")
     }
 
     // 验证审查者是否都是项目成员
-    if (validatedData.reviewers.length > 0) {
+    if (data.reviewers && data.reviewers.length > 0) {
       const projectMembers = await prisma.projectMember.findMany({
         where: {
           projectId: repository.projectId,
-          userId: { in: validatedData.reviewers },
+          userId: { in: data.reviewers },
         },
       })
 
-      if (projectMembers.length !== validatedData.reviewers.length) {
-        return NextResponse.json(
-          { error: "部分审查者不是项目成员" },
-          { status: 400 },
-        )
+      if (projectMembers.length !== data.reviewers.length) {
+        throw ApiError.badRequest("部分审查者不是项目成员")
       }
     }
 
     // 获取下一个PR编号
     const lastPR = await prisma.pullRequest.findFirst({
-      where: { repositoryId: validatedData.repositoryId },
+      where: { repositoryId: data.repositoryId },
       orderBy: { number: "desc" },
       select: { number: true },
     })
@@ -231,8 +187,8 @@ export async function POST(request: NextRequest) {
       if (repository.localPath) {
         const stats = await getBranchDiffStats(
           repository.localPath,
-          validatedData.sourceBranch,
-          validatedData.targetBranch,
+          data.sourceBranch,
+          data.targetBranch,
         )
         diffStats = {
           filesChanged: stats.filesChanged,
@@ -244,92 +200,87 @@ export async function POST(request: NextRequest) {
       console.warn("获取差异统计失败，使用默认值:", error)
     }
 
-    // 创建PR
-    const pullRequest = await prisma.pullRequest.create({
-      data: {
-        title: validatedData.title,
-        description: validatedData.description,
-        number: nextNumber,
-        sourceBranch: validatedData.sourceBranch,
-        targetBranch: validatedData.targetBranch,
-        status: validatedData.isDraft ? "DRAFT" : "OPEN",
-        isDraft: validatedData.isDraft,
-        repositoryId: validatedData.repositoryId,
-        projectId: repository.projectId,
-        authorId: user.id,
-        labels:
-          validatedData.labels.length > 0
-            ? JSON.stringify(validatedData.labels)
-            : null,
-        filesChanged: diffStats.filesChanged,
-        additions: diffStats.additions,
-        deletions: diffStats.deletions,
-        reviewers: {
-          create: validatedData.reviewers.map(reviewerId => ({
-            reviewerId,
-            status: "PENDING",
-          })),
-        },
-      },
-      include: {
-        author: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        reviewers: {
-          include: {
-            reviewer: {
-              select: { id: true, name: true, email: true, image: true },
-            },
+    // 创建PR（使用事务）
+    const pullRequest = await prisma.$transaction(async tx => {
+      const newPR = await tx.pullRequest.create({
+        data: {
+          title: data.title,
+          description: data.description,
+          number: nextNumber,
+          sourceBranch: data.sourceBranch,
+          targetBranch: data.targetBranch,
+          status: data.isDraft ? "DRAFT" : "OPEN",
+          isDraft: data.isDraft || false,
+          repositoryId: data.repositoryId,
+          projectId: repository.projectId,
+          authorId: user.id,
+          labels:
+            data.labels && data.labels.length > 0
+              ? JSON.stringify(data.labels)
+              : null,
+          filesChanged: diffStats.filesChanged,
+          additions: diffStats.additions,
+          deletions: diffStats.deletions,
+          reviewers: {
+            create: (data.reviewers || []).map(reviewerId => ({
+              reviewerId,
+              status: "PENDING",
+            })),
           },
         },
-        repository: {
-          select: { id: true, name: true, provider: true },
+        include: {
+          author: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          reviewers: {
+            include: {
+              reviewer: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+          },
+          repository: {
+            select: { id: true, name: true, provider: true },
+          },
+          project: {
+            select: { id: true, name: true, slug: true },
+          },
         },
-        project: {
-          select: { id: true, name: true, slug: true },
-        },
-      },
-    })
+      })
 
-    // 记录项目活动
-    await prisma.projectActivity.create({
-      data: {
-        projectId: repository.projectId,
-        type: "PR_CREATED",
-        userId: user.id,
-        title: `创建了 PR #${nextNumber}: ${validatedData.title}`,
-        description: `在仓库 ${repository.name} 中从 ${validatedData.sourceBranch} 向 ${validatedData.targetBranch} 创建了 Pull Request`,
-        metadata: JSON.stringify({
-          prId: pullRequest.id,
-          prNumber: nextNumber,
-          repository: repository.name,
-          sourceBranch: validatedData.sourceBranch,
-          targetBranch: validatedData.targetBranch,
-        }),
-      },
+      // 记录项目活动
+      await tx.projectActivity.create({
+        data: {
+          projectId: repository.projectId,
+          type: "PR_CREATED",
+          userId: user.id,
+          title: `创建了 PR #${nextNumber}: ${data.title}`,
+          description: `在仓库 ${repository.name} 中从 ${data.sourceBranch} 向 ${data.targetBranch} 创建了 Pull Request`,
+          metadata: JSON.stringify({
+            prId: newPR.id,
+            prNumber: nextNumber,
+            repository: repository.name,
+            sourceBranch: data.sourceBranch,
+            targetBranch: data.targetBranch,
+          }),
+        },
+      })
+
+      return newPR
     })
 
     // 格式化响应数据
     const formattedPR = {
       ...pullRequest,
-      labels: pullRequest.labels ? JSON.parse(pullRequest.labels) : [],
+      labels: utils.parseJsonSafely<string[]>(pullRequest.labels, []),
       reviewers: pullRequest.reviewers.map(r => ({
         ...r.reviewer,
         status: r.status,
         reviewedAt: r.reviewedAt,
       })),
+      commentCount: 0,
     }
 
-    return NextResponse.json({ pullRequest: formattedPR }, { status: 201 })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.errors },
-        { status: 400 },
-      )
-    }
-
-    console.error("创建PR失败:", error)
-    return NextResponse.json({ error: "创建PR失败" }, { status: 500 })
-  }
-}
+    return createdResponse(formattedPR, "Pull Request 创建成功")
+  }),
+)

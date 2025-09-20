@@ -24,25 +24,56 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
     defaultBranch: "main",
   })
   
-  const { createRepository, loading, error } = useRepositories(projectId)
+  console.log("AddRepositoryDialog: Hook调用", { projectId })
+  const repositoriesHook = useRepositories(projectId)
+  console.log("AddRepositoryDialog: Hook返回值", { 
+    hasCreateRepository: !!repositoriesHook?.createRepository,
+    loading: repositoriesHook?.loading,
+    error: repositoriesHook?.error
+  })
+  
+  const { createRepository, loading, error } = repositoriesHook || {}
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    console.log("AddRepositoryDialog: 表单提交", { 
+      formData, 
+      hasNameAndUrl: !!(formData.name && formData.url),
+      hasCreateRepository: !!createRepository,
+      createRepositoryType: typeof createRepository
+    })
+    
     if (!formData.name || !formData.url) {
+      console.log("AddRepositoryDialog: 表单数据不完整")
       return
     }
 
-    const repository = await createRepository(formData)
-    if (repository) {
-      setFormData({
-        name: "",
-        provider: "GITHUB",
-        url: "",
-        defaultBranch: "main",
-      })
-      onOpenChange(false)
-      onSuccess?.()
+    if (!createRepository) {
+      console.error("AddRepositoryDialog: createRepository函数未定义")
+      return
+    }
+
+    console.log("AddRepositoryDialog: 开始创建仓库")
+    try {
+      const repository = await createRepository(formData)
+      console.log("AddRepositoryDialog: 创建结果", { repository, success: !!repository })
+      
+      if (repository) {
+        console.log("AddRepositoryDialog: 创建成功，重置表单并关闭对话框")
+        setFormData({
+          name: "",
+          provider: "GITHUB",
+          url: "",
+          defaultBranch: "main",
+        })
+        onOpenChange(false)
+        onSuccess?.()
+      } else {
+        console.log("AddRepositoryDialog: 创建失败")
+      }
+    } catch (error) {
+      console.error("AddRepositoryDialog: 创建仓库出错", error)
     }
   }
 
@@ -65,7 +96,7 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
             连接新的代码仓库到项目
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+        <form id="add-repository-form" onSubmit={handleSubmit} className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="repo-name">仓库名称 *</Label>
             <Input
@@ -134,7 +165,7 @@ export function AddRepositoryDialog({ open, onOpenChange, projectId, onSuccess }
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             取消
           </Button>
-          <Button onClick={handleSubmit} disabled={loading}>
+          <Button type="submit" form="add-repository-form" disabled={loading || !formData.name || !formData.url}>
             {loading ? "添加中..." : "添加仓库"}
           </Button>
         </div>

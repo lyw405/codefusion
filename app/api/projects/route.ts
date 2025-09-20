@@ -1,69 +1,49 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { z } from "zod"
-import { getCurrentUser, ApiError, handleApiError } from "@/lib/utils/auth"
-
-// 创建项目的验证模式
-const createProjectSchema = z.object({
-  name: z.string().min(1, "项目名称不能为空"),
-  description: z.string().optional(),
-  slug: z
-    .string()
-    .min(1, "项目标识不能为空")
-    .regex(/^[a-z0-9-]+$/, "项目标识只能包含小写字母、数字和连字符"),
-  status: z
-    .enum([
-      "PLANNING",
-      "DEVELOPMENT",
-      "TESTING",
-      "STAGING",
-      "PRODUCTION",
-      "ARCHIVED",
-    ])
-    .default("PLANNING"),
-  visibility: z.enum(["PRIVATE", "TEAM", "PUBLIC"]).default("PRIVATE"),
-})
+import {
+  successResponse,
+  paginatedResponse,
+  createdResponse,
+  handleApiError,
+  withAuth,
+  projectSchemas,
+  validateRequestBody,
+  validateSearchParams,
+  utils,
+  ApiError,
+} from "@/lib/api"
 
 // 获取项目列表
-export async function GET(request: NextRequest) {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      const error = ApiError.notFound("没有找到用户")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
+export const GET = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "10")
-    const search = searchParams.get("search") || ""
-    const status = searchParams.get("status") || ""
-    const visibility = searchParams.get("visibility") || ""
+    const query = validateSearchParams(searchParams, projectSchemas.list)
 
     // 构建查询条件
     const where: Record<string, any> = {}
 
-    if (search) {
+    if (query.search) {
       where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { description: { contains: search, mode: "insensitive" } },
+        { name: { contains: query.search, mode: "insensitive" } },
+        { description: { contains: query.search, mode: "insensitive" } },
       ]
     }
 
-    if (status) {
-      where.status = status
+    if (query.status) {
+      where.status = query.status
     }
 
-    if (visibility) {
-      where.visibility = visibility
+    if (query.visibility) {
+      where.visibility = query.visibility
     }
 
     const baseWhere = {
       OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
       ...where,
     }
+
+    // 计算分页
+    const skip = (query.page! - 1) * query.limit!
 
     // 并行执行查询和计数
     const [userProjects, total] = await Promise.all([
@@ -101,108 +81,79 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-        skip: (page - 1) * limit,
-        take: limit,
+        skip,
+        take: query.limit!,
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.project.count({
-        where: baseWhere,
-      }),
+      prisma.project.count({ where: baseWhere }),
     ])
 
-    return NextResponse.json({
-      projects: userProjects,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
-    const apiError = handleApiError(error, "获取项目列表失败")
-    return NextResponse.json(
-      { error: apiError.error },
-      { status: apiError.status },
-    )
-  }
-}
+    // 构建分页信息
+    const pagination = utils.buildPagination(total, query.page!, query.limit!)
+
+    return paginatedResponse(userProjects, pagination, undefined, "projects")
+  }),
+)
 
 // 创建新项目
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const validatedData = createProjectSchema.parse(body)
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
+export const POST = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
+    const data = await validateRequestBody(request, projectSchemas.create)
 
     // 检查项目标识是否已存在
     const existingProject = await prisma.project.findUnique({
-      where: { slug: validatedData.slug },
+      where: { slug: data.slug },
     })
 
     if (existingProject) {
-      return NextResponse.json({ error: "项目标识已存在" }, { status: 400 })
+      throw ApiError.conflict("项目标识已存在")
     }
 
-    // 创建项目
-    const project = await prisma.project.create({
-      data: {
-        ...validatedData,
-        ownerId: user.id,
-        members: {
-          create: {
-            userId: user.id,
-            role: "OWNER",
+    // 创建项目（使用事务确保数据一致性）
+    const project = await prisma.$transaction(async tx => {
+      const newProject = await tx.project.create({
+        data: {
+          ...data,
+          ownerId: user.id,
+          members: {
+            create: {
+              userId: user.id,
+              role: "OWNER",
+            },
           },
-        },
-        activities: {
-          create: {
-            type: "PROJECT_CREATED",
-            userId: user.id,
-            title: "项目创建成功",
-          },
-        },
-      },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        members: {
-          include: {
-            user: {
-              select: { id: true, name: true, email: true, image: true },
+          activities: {
+            create: {
+              type: "PROJECT_CREATED",
+              userId: user.id,
+              title: "项目创建成功",
+              description: `项目 ${data.name} 创建成功`,
             },
           },
         },
-      },
+        include: {
+          owner: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          members: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+          },
+          _count: {
+            select: {
+              members: true,
+              repositories: true,
+              deployments: true,
+            },
+          },
+        },
+      })
+
+      return newProject
     })
 
-    return NextResponse.json({ project }, { status: 201 })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.errors },
-        { status: 400 },
-      )
-    }
-
-    const apiError = handleApiError(error, "创建项目失败")
-    return NextResponse.json(
-      { error: apiError.error },
-      { status: apiError.status },
-    )
-  }
-}
+    return createdResponse(project, "项目创建成功")
+  }),
+)

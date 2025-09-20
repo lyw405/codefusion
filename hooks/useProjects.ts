@@ -134,9 +134,22 @@ export function useProjects() {
           throw new Error(errorData.error || "获取项目列表失败")
         }
 
-        const data: ProjectsResponse = await response.json()
-        setProjects(data.projects)
-        setPagination(data.pagination)
+        const data = await response.json()
+
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          setProjects(data.data.projects || [])
+          setPagination(
+            data.data.pagination || {
+              page: 1,
+              limit: 10,
+              total: 0,
+              totalPages: 0,
+            },
+          )
+        } else {
+          throw new Error(data.error || "获取项目列表失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "获取项目列表失败")
       } finally {
@@ -171,9 +184,16 @@ export function useProjects() {
           throw new Error(errorData.error || "创建项目失败")
         }
 
-        const { project } = await response.json()
-        setProjects(prev => [project, ...prev])
-        return project
+        const data = await response.json()
+
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          const project = data.data
+          setProjects(prev => [project, ...prev])
+          return project
+        } else {
+          throw new Error(data.error || "创建项目失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "创建项目失败")
         return null
@@ -203,8 +223,14 @@ export function useProjects() {
           throw new Error(errorData.error || "获取项目详情失败")
         }
 
-        const { project } = await response.json()
-        return project
+        const data = await response.json()
+
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          return data.data
+        } else {
+          throw new Error(data.error || "获取项目详情失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "获取项目详情失败")
         return null
@@ -240,12 +266,17 @@ export function useProjects() {
           throw new Error(errorData.error || "更新项目失败")
         }
 
-        const { project } = await response.json()
+        const data = await response.json()
 
-        // 更新本地项目列表
-        setProjects(prev => prev.map(p => (p.id === projectId ? project : p)))
-
-        return project
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          const project = data.data
+          // 更新本地项目列表
+          setProjects(prev => prev.map(p => (p.id === projectId ? project : p)))
+          return project
+        } else {
+          throw new Error(data.error || "更新项目失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "更新项目失败")
         return null
@@ -277,10 +308,16 @@ export function useProjects() {
           throw new Error(errorData.error || "删除项目失败")
         }
 
-        // 从本地项目列表中移除
-        setProjects(prev => prev.filter(p => p.id !== projectId))
+        const data = await response.json()
 
-        return true
+        // 适配统一API响应格式
+        if (data.success) {
+          // 从本地项目列表中移除
+          setProjects(prev => prev.filter(p => p.id !== projectId))
+          return true
+        } else {
+          throw new Error(data.error || "删除项目失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "删除项目失败")
         return false

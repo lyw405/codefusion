@@ -70,7 +70,7 @@ export function usePRData() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [branchError, setBranchError] = useState<string | null>(null)
-  
+
   // 分支差异相关状态
   const [diffData, setDiffData] = useState<BranchDiff | null>(null)
   const [loadingDiff, setLoadingDiff] = useState(false)
@@ -116,63 +116,95 @@ export function usePRData() {
     setBranchError(null)
 
     try {
+      console.log("usePRData: 请求分支列表", { repositoryId })
+
       const response = await fetch(`/api/repositories/${repositoryId}/branches`)
+      const data = await response.json()
+
+      console.log("usePRData: 分支API响应", data)
+
       if (response.ok) {
-        const data = await response.json()
-        setBranches(data.branches || [])
+        // 适配统一API响应格式 {success: true, data: {branches: [...]}}
+        if (data.success && data.data) {
+          setBranches(data.data.branches || [])
+        } else {
+          // 兼容旧格式直接返回branches字段
+          setBranches(data.branches || [])
+        }
       } else {
-        const errorData = await response.json()
-        setBranchError(errorData.error || "获取分支列表失败")
+        const errorMsg = data.error || "获取分支列表失败"
+        setBranchError(errorMsg)
+        setBranches([]) // 确保设置空数组防止undefined错误
       }
     } catch (error) {
       console.error("获取分支列表失败:", error)
       setBranchError("网络错误，请稍后重试")
+      setBranches([]) // 确保设置空数组防止undefined错误
     } finally {
       setLoadingBranches(false)
     }
   }, [])
 
   // 获取分支差异
-  const fetchBranchDiff = useCallback(async (
-    repositoryId: string,
-    sourceBranch: string,
-    targetBranch: string,
-  ) => {
-    if (!repositoryId || !sourceBranch || !targetBranch) {
-      setDiffData(null)
-      return
-    }
-
-    setLoadingDiff(true)
-    setDiffError(null)
-
-    try {
-      const response = await fetch(
-        `/api/repositories/${repositoryId}/diff?source=${encodeURIComponent(sourceBranch)}&target=${encodeURIComponent(targetBranch)}`
-      )
-      
-      if (response.ok) {
-        const data = await response.json()
-        setDiffData(data)
-      } else {
-        const errorData = await response.json()
-        setDiffError(errorData.error || "获取分支差异失败")
+  const fetchBranchDiff = useCallback(
+    async (
+      repositoryId: string,
+      sourceBranch: string,
+      targetBranch: string,
+    ) => {
+      if (!repositoryId || !sourceBranch || !targetBranch) {
+        setDiffData(null)
+        return
       }
-    } catch (error) {
-      console.error("获取分支差异失败:", error)
-      setDiffError("网络错误，请稍后重试")
-    } finally {
-      setLoadingDiff(false)
-    }
-  }, [])
+
+      setLoadingDiff(true)
+      setDiffError(null)
+
+      try {
+        console.log("usePRData: 请求分支差异", {
+          repositoryId,
+          sourceBranch,
+          targetBranch,
+        })
+
+        const response = await fetch(
+          `/api/repositories/${repositoryId}/diff?source=${encodeURIComponent(sourceBranch)}&target=${encodeURIComponent(targetBranch)}`,
+        )
+
+        const data = await response.json()
+        console.log("usePRData: 分支差异API响应", data)
+
+        if (response.ok) {
+          // 适配统一API响应格式 {success: true, data: diffData}
+          if (data.success && data.data) {
+            setDiffData(data.data)
+          } else {
+            // 兼容旧格式直接返回差异数据
+            setDiffData(data)
+          }
+        } else {
+          const errorMsg = data.error || "获取分支差异失败"
+          setDiffError(errorMsg)
+          setDiffData(null)
+        }
+      } catch (error) {
+        console.error("获取分支差异失败:", error)
+        setDiffError("网络错误，请稍后重试")
+        setDiffData(null)
+      } finally {
+        setLoadingDiff(false)
+      }
+    },
+    [],
+  )
 
   // 获取分支的最新提交信息
   const getLatestCommitFromBranch = useCallback(
-    (branchName: string): Branch['commit'] | null => {
+    (branchName: string): Branch["commit"] | null => {
       const branch = branches.find(b => b.name === branchName)
       return branch?.commit || null
     },
-    [branches]
+    [branches],
   )
 
   // 根据项目 ID 获取仓库列表

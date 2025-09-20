@@ -71,11 +71,11 @@ export default function CodeReviewPage() {
   })
   
   // 统计数据
-  const openPRs = pullRequests.filter(pr => pr.status === "OPEN")
-  const approvedPRs = pullRequests.filter(pr => 
+  const openPRs = (pullRequests || []).filter(pr => pr.status === "OPEN")
+  const approvedPRs = (pullRequests || []).filter(pr => 
     pr.reviewers.some(r => r.status === "APPROVED")
   )
-  const changesRequestedPRs = pullRequests.filter(pr => 
+  const changesRequestedPRs = (pullRequests || []).filter(pr => 
     pr.reviewers.some(r => r.status === "REJECTED")
   )
   
@@ -155,7 +155,7 @@ export default function CodeReviewPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-purple-600">{pullRequests.length}</p>
+                <p className="text-2xl font-bold text-purple-600">{(pullRequests || []).length}</p>
                 <p className="text-sm text-muted-foreground">总数</p>
               </div>
               <Clock className="h-8 w-8 text-purple-500" />
@@ -169,7 +169,7 @@ export default function CodeReviewPage() {
         <TabsList className="grid w-full grid-cols-1">
           <TabsTrigger value="prs" className="flex items-center gap-2">
             <GitPullRequest className="h-4 w-4" />
-            Pull Requests ({pullRequests.length})
+            Pull Requests ({(pullRequests || []).length})
           </TabsTrigger>
         </TabsList>
 
@@ -237,7 +237,7 @@ export default function CodeReviewPage() {
                 {error}
               </AlertDescription>
             </Alert>
-          ) : pullRequests.length === 0 ? (
+          ) : (pullRequests || []).length === 0 ? (
             <div className="text-center py-20">
               <GitPullRequest className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
@@ -253,7 +253,7 @@ export default function CodeReviewPage() {
           ) : (
             /* PR 列表 */
             <div className="space-y-4">
-              {pullRequests.map((pr) => (
+              {(pullRequests || []).map((pr) => (
                 <Link key={pr.id} href={`/main/code-review/${pr.id}`}>
                   <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                     <CardContent className="p-6">

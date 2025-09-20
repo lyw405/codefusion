@@ -35,9 +35,9 @@ interface Repository {
 interface Branch {
   name: string
   fullName: string
-  commit: string
-  fullCommit: string
-  lastCommit: {
+  commit?: {
+    hash: string
+    shortHash: string
     message: string
     author: string
     date: string
@@ -96,18 +96,34 @@ export default function NewDeployPage() {
       const response = await fetch(`/api/repositories/${repositoryId}/branches`)
       if (response.ok) {
         const data = await response.json()
-        setBranches(data.branches || [])
+        console.log("fetchBranches: API响应", data)
+        
+        // 适配统一API响应格式
+        let branches = []
+        if (data.success && data.data) {
+          // 统一响应格式
+          branches = data.data.branches || []
+        } else if (data.branches) {
+          // 兼容旧格式
+          branches = data.branches
+        } else {
+          console.error("fetchBranches: 无法解析分支数据", data)
+          branches = [] // 默认为空数组
+        }
+        
+        console.log("fetchBranches: 解析到的分支数据", { branchCount: branches.length, branches })
+        setBranches(branches)
         
         // 自动选择默认分支（只有在没有选中分支时）
         setFormData(prev => {
           if (prev.branch) return prev // 如果已有分支选择，不要改变
           
-          const defaultBranch = data.branches.find((b: Branch) => b.isDefault)
+          const defaultBranch = (branches || []).find((b: Branch) => b.isDefault)
           if (defaultBranch) {
             return { ...prev, branch: defaultBranch.name }
-          } else if (data.branches.length > 0) {
+          } else if (branches.length > 0) {
             // 如果没有默认分支，选择第一个分支
-            return { ...prev, branch: data.branches[0].name }
+            return { ...prev, branch: branches[0].name }
           }
           return prev
         })
@@ -188,7 +204,19 @@ export default function NewDeployPage() {
         throw new Error(errorData.error || "创建部署失败")
       }
 
-      const { deployment } = await response.json()
+      const data = await response.json()
+      console.log("handleSubmit: API响应", data)
+      
+      // 适配统一API响应格式
+      let deployment
+      if (data.success && data.data) {
+        deployment = data.data.deployment || data.data
+      } else if (data.deployment) {
+        // 兼容旧格式
+        deployment = data.deployment
+      } else {
+        throw new Error(data.error || "创建部署失败")
+      }
       
       // 部署记录创建成功，跳转到部署详情页面
       router.push(`/main/deploy/${deployment.id}`)
@@ -363,22 +391,23 @@ export default function NewDeployPage() {
                 <div className="mt-2 p-3 bg-muted rounded-lg">
                   {(() => {
                     const selectedBranch = branches.find(b => b.name === formData.branch)
+                    console.log("selectedBranch数据", { selectedBranch, branchName: formData.branch })
                     if (selectedBranch) {
                       return (
                         <div className="space-y-1 text-sm">
                           <div className="flex items-center gap-2">
                             <span className="font-medium">最新提交:</span>
                             <code className="bg-background px-2 py-1 rounded text-xs">
-                              {selectedBranch.commit}
+                              {selectedBranch.commit?.shortHash || selectedBranch.commit?.hash || 'N/A'}
                             </code>
                           </div>
                           <div>
                             <span className="font-medium">提交信息:</span>
-                            <span className="ml-2">{selectedBranch.lastCommit.message}</span>
+                            <span className="ml-2">{selectedBranch.commit?.message || '无提交信息'}</span>
                           </div>
                           <div>
                             <span className="font-medium">作者:</span>
-                            <span className="ml-2">{selectedBranch.lastCommit.author}</span>
+                            <span className="ml-2">{selectedBranch.commit?.author || 'Unknown'}</span>
                           </div>
                         </div>
                       )

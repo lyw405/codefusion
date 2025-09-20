@@ -321,7 +321,7 @@ export async function getBranchDiff(
     // 获取差异统计
     const { stdout: statOutput } = await execAsync(
       `git diff --stat ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath },
+      { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
     // 解析统计信息
@@ -330,13 +330,13 @@ export async function getBranchDiff(
     // 获取详细的文件差异
     const { stdout: diffOutput } = await execAsync(
       `git diff --name-status ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath },
+      { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
     // 获取每个文件的详细 patch
     const { stdout: patchOutput } = await execAsync(
       `git diff ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath },
+      { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
     // 解析文件变更
@@ -474,7 +474,7 @@ async function parseFileDiff(
     try {
       const { stdout: fileStats } = await execAsync(
         `git diff --numstat ${targetBranch}..${sourceBranch} -- "${filename}"`,
-        { cwd: localPath },
+        { cwd: localPath, maxBuffer: 1024 * 1024 }, // 1MB buffer for individual files
       )
 
       const [addStr, delStr] = fileStats.trim().split("\t")

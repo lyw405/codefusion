@@ -1,184 +1,147 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import {
+  successResponse,
+  handleApiError,
+  withAuth,
+  validateRequestBody,
+  ApiError,
+} from "@/lib/api"
+import { z } from "zod"
+
+// 部署更新参数验证
+const updateDeploymentSchema = z.object({
+  status: z.enum(["PENDING", "RUNNING", "SUCCESS", "FAILED"]),
+  buildLog: z.string().optional(),
+})
 
 // 获取部署详情
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const GET = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: deploymentId } = params
 
-    const { id: deploymentId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 获取部署详情
-    const deployment = await prisma.deployment.findFirst({
-      where: {
-        id: deploymentId,
-        project: {
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
+      // 获取部署详情
+      const deployment = await prisma.deployment.findFirst({
+        where: {
+          id: deploymentId,
+          project: {
+            OR: [
+              { ownerId: user.id },
+              { members: { some: { userId: user.id } } },
+            ],
+          },
         },
-      },
-      include: {
-        project: {
-          select: { id: true, name: true, slug: true },
+        include: {
+          project: {
+            select: { id: true, name: true, slug: true },
+          },
+          repository: {
+            select: { id: true, name: true, url: true },
+          },
         },
-        repository: {
-          select: { id: true, name: true, url: true },
-        },
-      },
-    })
+      })
 
-    if (!deployment) {
-      return NextResponse.json(
-        { error: "部署不存在或无权限访问" },
-        { status: 404 },
-      )
-    }
+      if (!deployment) {
+        throw ApiError.notFound("部署不存在或无权限访问")
+      }
 
-    return NextResponse.json({ deployment })
-  } catch (error) {
-    console.error("获取部署详情失败:", error)
-    return NextResponse.json({ error: "获取部署详情失败" }, { status: 500 })
-  }
-}
+      return successResponse({ deployment })
+    },
+  ),
+)
 
 // 更新部署状态
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const PUT = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: deploymentId } = params
+      const body = await validateRequestBody(request, updateDeploymentSchema)
 
-    const { id: deploymentId } = params
-    const body = await request.json()
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证权限
-    const deployment = await prisma.deployment.findFirst({
-      where: {
-        id: deploymentId,
-        project: {
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
+      // 验证权限
+      const deployment = await prisma.deployment.findFirst({
+        where: {
+          id: deploymentId,
+          project: {
+            OR: [
+              { ownerId: user.id },
+              { members: { some: { userId: user.id } } },
+            ],
+          },
         },
-      },
-    })
+      })
 
-    if (!deployment) {
-      return NextResponse.json(
-        { error: "部署不存在或无权限访问" },
-        { status: 404 },
+      if (!deployment) {
+        throw ApiError.notFound("部署不存在或无权限访问")
+      }
+
+      // 更新部署状态
+      const updatedDeployment = await prisma.deployment.update({
+        where: { id: deploymentId },
+        data: {
+          status: body.status,
+          deployedAt: body.status === "SUCCESS" ? new Date() : null,
+          buildLog: body.buildLog,
+        },
+        include: {
+          project: {
+            select: { id: true, name: true, slug: true },
+          },
+          repository: {
+            select: { id: true, name: true, url: true },
+          },
+        },
+      })
+
+      return successResponse(
+        { deployment: updatedDeployment },
+        "部署状态已更新",
       )
-    }
-
-    // 更新部署状态
-    const updatedDeployment = await prisma.deployment.update({
-      where: { id: deploymentId },
-      data: {
-        status: body.status,
-        deployedAt: body.status === "SUCCESS" ? new Date() : null,
-        buildArtifactPath: body.buildArtifactPath,
-        deployLog: body.deployLog,
-      },
-      include: {
-        project: {
-          select: { id: true, name: true, slug: true },
-        },
-        repository: {
-          select: { id: true, name: true, url: true },
-        },
-      },
-    })
-
-    return NextResponse.json({ deployment: updatedDeployment })
-  } catch (error) {
-    console.error("更新部署状态失败:", error)
-    return NextResponse.json({ error: "更新部署状态失败" }, { status: 500 })
-  }
-}
+    },
+  ),
+)
 
 // 删除部署
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const DELETE = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: deploymentId } = params
 
-    const { id: deploymentId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证权限
-    const deployment = await prisma.deployment.findFirst({
-      where: {
-        id: deploymentId,
-        project: {
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
+      // 验证权限
+      const deployment = await prisma.deployment.findFirst({
+        where: {
+          id: deploymentId,
+          project: {
+            OR: [
+              { ownerId: user.id },
+              { members: { some: { userId: user.id } } },
+            ],
+          },
         },
-      },
-    })
+      })
 
-    if (!deployment) {
-      return NextResponse.json(
-        { error: "部署不存在或无权限访问" },
-        { status: 404 },
-      )
-    }
+      if (!deployment) {
+        throw ApiError.notFound("部署不存在或无权限访问")
+      }
 
-    // 删除部署
-    await prisma.deployment.delete({
-      where: { id: deploymentId },
-    })
+      // 删除部署
+      await prisma.deployment.delete({
+        where: { id: deploymentId },
+      })
 
-    return NextResponse.json({ message: "部署已删除" })
-  } catch (error) {
-    console.error("删除部署失败:", error)
-    return NextResponse.json({ error: "删除部署失败" }, { status: 500 })
-  }
-}
+      return successResponse(null, "部署已删除")
+    },
+  ),
+)

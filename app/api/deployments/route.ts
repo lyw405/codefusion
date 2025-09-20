@@ -1,71 +1,35 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { z } from "zod"
-
-// 简化的部署创建验证模式
-const createDeploymentSchema = z.object({
-  projectId: z.string().min(1, "项目ID不能为空"),
-  repositoryId: z.string().min(1, "仓库ID不能为空"),
-  branch: z.string().min(1, "分支不能为空"),
-  environment: z.enum(["DEVELOPMENT", "STAGING", "PRODUCTION"]),
-  config: z.object({
-    host: z.string().min(1, "服务器IP不能为空"),
-    port: z.number().min(1, "端口不能为空"),
-    user: z.string().min(1, "用户名不能为空"),
-    password: z.string().min(1, "密码不能为空"),
-    environment: z.string(),
-  }),
-})
+import {
+  successResponse,
+  paginatedResponse,
+  createdResponse,
+  handleApiError,
+  withAuth,
+  deploymentSchemas,
+  validateRequestBody,
+  validateSearchParams,
+  checkProjectAccess,
+  utils,
+  ApiError,
+} from "@/lib/api"
 
 // 获取部署列表
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
-
+export const GET = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
     const { searchParams } = new URL(request.url)
-    const projectId = searchParams.get("projectId")
-    const status = searchParams.get("status")
-    const environment = searchParams.get("environment")
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "10")
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
+    const query = validateSearchParams(searchParams, deploymentSchemas.list)
 
     // 构建查询条件
     const where: any = {}
 
-    if (projectId) {
+    if (query.projectId) {
       // 验证用户是否有项目访问权限
-      const project = await prisma.project.findFirst({
-        where: {
-          id: projectId,
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
-        },
-      })
-
-      if (!project) {
-        return NextResponse.json(
-          { error: "项目不存在或无权限访问" },
-          { status: 404 },
-        )
+      const hasAccess = await checkProjectAccess(user.id, query.projectId)
+      if (!hasAccess) {
+        throw ApiError.forbidden("项目不存在或无权限访问")
       }
-
-      where.projectId = projectId
+      where.projectId = query.projectId
     } else {
       // 获取用户有权限的所有项目
       const userProjects = await prisma.project.findMany({
@@ -77,20 +41,19 @@ export async function GET(request: NextRequest) {
         },
         select: { id: true },
       })
-
       where.projectId = { in: userProjects.map(p => p.id) }
     }
 
-    if (status) {
-      where.status = status
+    if (query.status) {
+      where.status = query.status
     }
 
-    if (environment) {
-      where.environment = environment
+    if (query.environment) {
+      where.environment = query.environment
     }
 
     // 计算分页
-    const skip = (page - 1) * limit
+    const skip = (query.page! - 1) * query.limit!
 
     // 获取部署列表
     const [deployments, total] = await Promise.all([
@@ -106,107 +69,98 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: "desc" },
         skip,
-        take: limit,
+        take: query.limit!,
       }),
       prisma.deployment.count({ where }),
     ])
 
-    const totalPages = Math.ceil(total / limit)
+    // 构建分页信息
+    const pagination = utils.buildPagination(total, query.page!, query.limit!)
 
-    return NextResponse.json({
-      deployments,
-      total,
-      page,
-      limit,
-      totalPages,
-    })
-  } catch (error) {
-    console.error("获取部署列表失败:", error)
-    return NextResponse.json({ error: "获取部署列表失败" }, { status: 500 })
-  }
-}
+    return paginatedResponse(deployments, pagination, undefined, "deployments")
+  }),
+)
 
 // 创建部署
-export async function POST(request: NextRequest) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
+export const POST = handleApiError(
+  withAuth(async (user, request: NextRequest) => {
+    const data = await validateRequestBody(request, deploymentSchemas.create)
+
+    // 验证项目权限（需要开发者权限才能创建部署）
+    const hasAccess = await checkProjectAccess(user.id, data.projectId, [
+      "OWNER",
+      "ADMIN",
+      "DEVELOPER",
+    ])
+    if (!hasAccess) {
+      throw ApiError.forbidden("创建部署需要项目开发者权限")
     }
 
-    const body = await request.json()
-    const validatedData = createDeploymentSchema.parse(body)
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证项目权限
-    const project = await prisma.project.findFirst({
-      where: {
-        id: validatedData.projectId,
-        OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
-      },
-    })
+    // 验证项目和仓库存在性
+    const [project, repository] = await Promise.all([
+      prisma.project.findUnique({
+        where: { id: data.projectId },
+        select: { id: true, name: true },
+      }),
+      prisma.repository.findFirst({
+        where: {
+          id: data.repositoryId,
+          projectId: data.projectId,
+        },
+        select: { id: true, name: true },
+      }),
+    ])
 
     if (!project) {
-      return NextResponse.json(
-        { error: "项目不存在或无权限访问" },
-        { status: 404 },
-      )
+      throw ApiError.notFound("项目不存在")
     }
-
-    // 验证仓库权限
-    const repository = await prisma.repository.findFirst({
-      where: {
-        id: validatedData.repositoryId,
-        projectId: validatedData.projectId,
-      },
-    })
 
     if (!repository) {
-      return NextResponse.json(
-        { error: "仓库不存在或无权限访问" },
-        { status: 404 },
-      )
+      throw ApiError.notFound("仓库不存在或不属于该项目")
     }
 
-    // 创建部署记录
-    const deployment = await prisma.deployment.create({
-      data: {
-        name: `${project.name}-${validatedData.branch}-${validatedData.environment}`,
-        environment: validatedData.environment,
-        status: "PENDING",
-        branch: validatedData.branch,
-        config: JSON.stringify(validatedData.config),
-        projectId: validatedData.projectId,
-        repositoryId: validatedData.repositoryId,
-      },
-      include: {
-        project: {
-          select: { id: true, name: true, slug: true },
+    // 创建部署记录（使用事务）
+    const deployment = await prisma.$transaction(async tx => {
+      const newDeployment = await tx.deployment.create({
+        data: {
+          name: `${project.name}-${data.branch}-${data.environment}`,
+          environment: data.environment,
+          status: "PENDING",
+          branch: data.branch,
+          config: JSON.stringify(data.config),
+          projectId: data.projectId,
+          repositoryId: data.repositoryId,
         },
-        repository: {
-          select: { id: true, name: true, url: true },
+        include: {
+          project: {
+            select: { id: true, name: true, slug: true },
+          },
+          repository: {
+            select: { id: true, name: true, url: true },
+          },
         },
-      },
+      })
+
+      // 记录项目活动
+      await tx.projectActivity.create({
+        data: {
+          projectId: data.projectId,
+          type: "PROJECT_CREATED", // 使用现有的类型
+          userId: user.id,
+          title: `创建了部署 ${newDeployment.name}`,
+          description: `在环境 ${data.environment} 中创建了新的部署`,
+          metadata: JSON.stringify({
+            deploymentId: newDeployment.id,
+            environment: data.environment,
+            branch: data.branch,
+            repository: repository.name,
+          }),
+        },
+      })
+
+      return newDeployment
     })
 
-    return NextResponse.json({ deployment })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "参数验证失败", details: error.errors },
-        { status: 400 },
-      )
-    }
-
-    console.error("创建部署失败:", error)
-    return NextResponse.json({ error: "创建部署失败" }, { status: 500 })
-  }
-}
+    return createdResponse(deployment, "部署创建成功")
+  }),
+)

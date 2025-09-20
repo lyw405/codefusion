@@ -113,13 +113,20 @@ export function useProjectDetail(projectId: string) {
   // 获取项目详情
   const fetchProject = useCallback(async () => {
     if (!projectId) {
+      console.log("useProjectDetail: projectId为空")
       return
     }
+
+    console.log("useProjectDetail: 开始获取项目详情", {
+      projectId,
+      hasSession: !!session?.user?.email,
+    })
 
     // 开发环境：即使没有session也尝试获取数据
     if (process.env.NODE_ENV === "development" && !session?.user?.email) {
       console.log("开发环境：绕过session检查，直接获取项目详情")
     } else if (!session?.user?.email) {
+      console.log("useProjectDetail: 无session，跳过请求")
       return
     }
 
@@ -128,15 +135,31 @@ export function useProjectDetail(projectId: string) {
 
     try {
       const response = await fetch(`/api/projects/${projectId}`)
+      console.log("useProjectDetail: API响应状态", response.status)
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error("useProjectDetail: API错误响应", errorData)
         throw new Error(errorData.error || "获取项目详情失败")
       }
 
-      const { project } = await response.json()
-      setProject(project)
+      const data = await response.json()
+      console.log("useProjectDetail: API响应数据", {
+        hasSuccess: data.success,
+        hasData: !!data.data,
+        dataKeys: data.data ? Object.keys(data.data) : [],
+      })
+
+      // 适配统一API响应格式
+      if (data.success && data.data) {
+        console.log("useProjectDetail: 设置项目数据成功")
+        setProject(data.data)
+      } else {
+        console.error("useProjectDetail: 响应格式错误", data)
+        throw new Error(data.error || "获取项目详情失败")
+      }
     } catch (err) {
+      console.error("useProjectDetail: 获取项目详情出错", err)
       setError(err instanceof Error ? err.message : "获取项目详情失败")
     } finally {
       setLoading(false)
@@ -168,9 +191,16 @@ export function useProjectDetail(projectId: string) {
           throw new Error(errorData.error || "更新项目失败")
         }
 
-        const { project } = await response.json()
-        setProject(project)
-        return project
+        const data = await response.json()
+
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          const project = data.data
+          setProject(project)
+          return project
+        } else {
+          throw new Error(data.error || "更新项目失败")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "更新项目失败")
         return null

@@ -1,43 +1,45 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import {
+  successResponse,
+  handleApiError,
+  validateRequestBody,
+  ApiError,
+} from "@/lib/api"
+import { z } from "zod"
 
-export async function POST(request: NextRequest) {
-  try {
-    const { email } = await request.json()
+// 开发环境登录参数验证
+const devLoginSchema = z.object({
+  email: z.string().email("请输入有效的邮箱地址"),
+})
 
-    if (!email) {
-      return NextResponse.json({ error: "邮箱地址不能为空" }, { status: 400 })
-    }
+export const POST = handleApiError(async (request: NextRequest) => {
+  const data = await validateRequestBody(request, devLoginSchema)
 
-    // 查找用户
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-      },
-    })
+  // 查找用户
+  const user = await prisma.user.findUnique({
+    where: { email: data.email },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+    },
+  })
 
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 在开发环境中，我们直接返回用户信息
-    // 在实际生产环境中，这里应该使用 NextAuth 的 credentials provider
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-      },
-      message: "开发环境登录成功",
-    })
-  } catch (error) {
-    console.error("开发登录失败:", error)
-    return NextResponse.json({ error: "登录失败" }, { status: 500 })
+  if (!user) {
+    throw ApiError.notFound("用户不存在")
   }
-}
+
+  // 在开发环境中，我们直接返回用户信息
+  // 在实际生产环境中，这里应该使用 NextAuth 的 credentials provider
+  return successResponse(
+    {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image,
+    },
+    "开发环境登录成功",
+  )
+})

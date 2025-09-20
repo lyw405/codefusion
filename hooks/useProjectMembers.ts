@@ -36,17 +36,28 @@ export function useProjectMembers(projectId: string) {
     setError(null)
 
     try {
+      console.log("useProjectMembers: 请求成员列表", { projectId })
+
       const response = await fetch(`/api/projects/${projectId}/members`)
       const data = await response.json()
+
+      console.log("useProjectMembers: 成员API响应", data)
 
       if (!response.ok) {
         throw new Error(data.error || "获取成员列表失败")
       }
 
-      setMembers(data.members || [])
+      // 适配统一API响应格式 {success: true, data: {members: [...]}}
+      if (data.success && data.data) {
+        setMembers(data.data.members || [])
+      } else {
+        // 兼容旧格式直接返回members字段
+        setMembers(data.members || [])
+      }
     } catch (err) {
       console.error("获取成员列表失败:", err)
       setError(err instanceof Error ? err.message : "获取成员列表失败")
+      setMembers([]) // 确保设置空数组防止undefined错误
     } finally {
       setLoading(false)
     }
@@ -58,16 +69,26 @@ export function useProjectMembers(projectId: string) {
       if (!projectId || !memberId) return null
 
       try {
+        console.log("useProjectMembers: 请求成员详情", { projectId, memberId })
+
         const response = await fetch(
           `/api/projects/${projectId}/members/${memberId}`,
         )
         const data = await response.json()
 
+        console.log("useProjectMembers: 成员详情API响应", data)
+
         if (!response.ok) {
           throw new Error(data.error || "获取成员详情失败")
         }
 
-        return data.member
+        // 适配统一API响应格式 {success: true, data: {member: {...}}}
+        if (data.success && data.data) {
+          return data.data.member
+        } else {
+          // 兼容旧格式直接返回member字段
+          return data.member
+        }
       } catch (err) {
         console.error("获取成员详情失败:", err)
         setError(err instanceof Error ? err.message : "获取成员详情失败")
@@ -86,6 +107,8 @@ export function useProjectMembers(projectId: string) {
       setError(null)
 
       try {
+        console.log("useProjectMembers: 添加成员", { projectId, memberData })
+
         const response = await fetch(`/api/projects/${projectId}/members`, {
           method: "POST",
           headers: {
@@ -96,14 +119,27 @@ export function useProjectMembers(projectId: string) {
 
         const data = await response.json()
 
+        console.log("useProjectMembers: 添加成员API响应", data)
+
         if (!response.ok) {
           throw new Error(data.error || "添加成员失败")
         }
 
-        // 更新本地状态
-        setMembers(prev => [...prev, data.member])
+        // 适配统一API响应格式 {success: true, data: {member: {...}}}
+        let newMember
+        if (data.success && data.data) {
+          newMember = data.data.member
+        } else {
+          // 兼容旧格式直接返回member字段
+          newMember = data.member
+        }
 
-        return data.member
+        // 更新本地状态
+        if (newMember) {
+          setMembers(prev => [...prev, newMember])
+        }
+
+        return newMember
       } catch (err) {
         console.error("添加成员失败:", err)
         setError(err instanceof Error ? err.message : "添加成员失败")
@@ -124,6 +160,12 @@ export function useProjectMembers(projectId: string) {
       setError(null)
 
       try {
+        console.log("useProjectMembers: 更新成员", {
+          projectId,
+          memberId,
+          memberData,
+        })
+
         const response = await fetch(
           `/api/projects/${projectId}/members/${memberId}`,
           {
@@ -137,18 +179,31 @@ export function useProjectMembers(projectId: string) {
 
         const data = await response.json()
 
+        console.log("useProjectMembers: 更新成员API响应", data)
+
         if (!response.ok) {
           throw new Error(data.error || "更新成员失败")
         }
 
-        // 更新本地状态
-        setMembers(prev =>
-          prev.map(member =>
-            member.id === memberId ? { ...member, ...data.member } : member,
-          ),
-        )
+        // 适配统一API响应格式 {success: true, data: {member: {...}}}
+        let updatedMember
+        if (data.success && data.data) {
+          updatedMember = data.data.member
+        } else {
+          // 兼容旧格式直接返回member字段
+          updatedMember = data.member
+        }
 
-        return data.member
+        // 更新本地状态
+        if (updatedMember) {
+          setMembers(prev =>
+            prev.map(member =>
+              member.id === memberId ? { ...member, ...updatedMember } : member,
+            ),
+          )
+        }
+
+        return updatedMember
       } catch (err) {
         console.error("更新成员失败:", err)
         setError(err instanceof Error ? err.message : "更新成员失败")

@@ -34,6 +34,8 @@ export function useRepositories(projectId: string) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  console.log("useRepositories: Hook初始化", { projectId })
+
   // 获取仓库列表
   const fetchRepositories = useCallback(async () => {
     if (!projectId) return
@@ -49,7 +51,12 @@ export function useRepositories(projectId: string) {
         throw new Error(data.error || "获取仓库列表失败")
       }
 
-      setRepositories(data.repositories || [])
+      // 适配统一API响应格式
+      if (data.success && data.data) {
+        setRepositories(data.data.repositories || [])
+      } else {
+        throw new Error(data.error || "获取仓库列表失败")
+      }
     } catch (err) {
       console.error("获取仓库列表失败:", err)
       setError(err instanceof Error ? err.message : "获取仓库列表失败")
@@ -73,7 +80,12 @@ export function useRepositories(projectId: string) {
           throw new Error(data.error || "获取仓库详情失败")
         }
 
-        return data.repository
+        // 适配统一API响应格式
+        if (data.success && data.data) {
+          return data.data.repository
+        } else {
+          throw new Error(data.error || "获取仓库详情失败")
+        }
       } catch (err) {
         console.error("获取仓库详情失败:", err)
         setError(err instanceof Error ? err.message : "获取仓库详情失败")
@@ -86,7 +98,17 @@ export function useRepositories(projectId: string) {
   // 创建仓库
   const createRepository = useCallback(
     async (repositoryData: CreateRepositoryData) => {
-      if (!projectId) return null
+      console.log("createRepository: 函数被调用", { projectId, repositoryData })
+
+      if (!projectId) {
+        console.error("createRepository: projectId为空")
+        return null
+      }
+
+      console.log("createRepository: 开始创建仓库", {
+        projectId,
+        repositoryData,
+      })
 
       setLoading(true)
       setError(null)
@@ -104,15 +126,29 @@ export function useRepositories(projectId: string) {
         )
 
         const data = await response.json()
+        console.log("createRepository: API响应", {
+          status: response.status,
+          data,
+        })
 
         if (!response.ok) {
           throw new Error(data.error || "创建仓库失败")
         }
 
-        // 更新本地状态
-        setRepositories(prev => [...prev, data.repository])
+        // 适配统一API响应格式
+        let repository
+        if (data.success && data.data) {
+          repository = data.data.repository
+          console.log("createRepository: 创建成功", repository)
+        } else {
+          console.error("createRepository: 响应格式错误", data)
+          throw new Error(data.error || "创建仓库失败")
+        }
 
-        return data.repository
+        // 更新本地状态
+        setRepositories(prev => [...prev, repository])
+
+        return repository
       } catch (err) {
         console.error("创建仓库失败:", err)
         setError(err instanceof Error ? err.message : "创建仓库失败")
@@ -150,14 +186,22 @@ export function useRepositories(projectId: string) {
           throw new Error(data.error || "更新仓库失败")
         }
 
+        // 适配统一API响应格式
+        let repository
+        if (data.success && data.data) {
+          repository = data.data.repository
+        } else {
+          throw new Error(data.error || "更新仓库失败")
+        }
+
         // 更新本地状态
         setRepositories(prev =>
           prev.map(repo =>
-            repo.id === repoId ? { ...repo, ...data.repository } : repo,
+            repo.id === repoId ? { ...repo, ...repository } : repo,
           ),
         )
 
-        return data.repository
+        return repository
       } catch (err) {
         console.error("更新仓库失败:", err)
         setError(err instanceof Error ? err.message : "更新仓库失败")
@@ -191,6 +235,11 @@ export function useRepositories(projectId: string) {
           throw new Error(data.error || "删除仓库失败")
         }
 
+        // 验证统一API响应格式
+        if (!data.success) {
+          throw new Error(data.error || "删除仓库失败")
+        }
+
         // 更新本地状态
         setRepositories(prev => prev.filter(repo => repo.id !== repoId))
 
@@ -211,7 +260,7 @@ export function useRepositories(projectId: string) {
     return fetchRepositories()
   }, [fetchRepositories])
 
-  return {
+  const hookResult = {
     repositories,
     loading,
     error,
@@ -223,4 +272,11 @@ export function useRepositories(projectId: string) {
     refreshRepositories,
     setError, // 允许手动清除错误
   }
+
+  console.log("useRepositories: Hook返回值", {
+    hasCreateRepository: !!hookResult.createRepository,
+    createRepositoryType: typeof hookResult.createRepository,
+  })
+
+  return hookResult
 }

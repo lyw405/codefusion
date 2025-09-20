@@ -117,7 +117,7 @@ export default function DeployPage() {
 
 
   // 筛选部署列表
-  const filteredDeployments = deployments.filter(deployment => {
+  const filteredDeployments = (deployments || []).filter(deployment => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase()
       return (
@@ -130,7 +130,7 @@ export default function DeployPage() {
     return true
   })
 
-  if (loading && deployments.length === 0) {
+  if (loading && (!deployments || deployments.length === 0)) {
     return (
       <div className="container mx-auto py-8">
         <div className="flex items-center justify-center py-12">

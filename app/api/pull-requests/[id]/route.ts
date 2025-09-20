@@ -1,7 +1,12 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import {
+  successResponse,
+  handleApiError,
+  withAuth,
+  validateRequestBody,
+  ApiError,
+} from "@/lib/api"
 import { z } from "zod"
 
 // 更新PR的验证模式
@@ -14,109 +19,92 @@ const updatePRSchema = z.object({
 })
 
 // 获取单个PR详情
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const GET = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: prId } = params
 
-    const { id: prId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 获取PR详情
-    const pullRequest = await prisma.pullRequest.findFirst({
-      where: {
-        id: prId,
-        // 确保用户有权限查看这个PR
-        OR: [
-          { authorId: user.id },
-          { assigneeId: user.id },
-          { reviewers: { some: { reviewerId: user.id } } },
-          {
-            project: {
-              OR: [
-                { ownerId: user.id },
-                { members: { some: { userId: user.id } } },
-              ],
+      // 获取PR详情
+      const pullRequest = await prisma.pullRequest.findFirst({
+        where: {
+          id: prId,
+          // 确保用户有权限查看这个PR
+          OR: [
+            { authorId: user.id },
+            { assigneeId: user.id },
+            { reviewers: { some: { reviewerId: user.id } } },
+            {
+              project: {
+                OR: [
+                  { ownerId: user.id },
+                  { members: { some: { userId: user.id } } },
+                ],
+              },
+            },
+          ],
+        },
+        include: {
+          author: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          assignee: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          reviewers: {
+            include: {
+              reviewer: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+            orderBy: { reviewedAt: "desc" },
+          },
+          comments: {
+            include: {
+              author: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+            orderBy: { createdAt: "asc" },
+          },
+          repository: {
+            select: {
+              id: true,
+              name: true,
+              provider: true,
+              url: true,
+              localPath: true,
+              isCloned: true,
             },
           },
-        ],
-      },
-      include: {
-        author: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        assignee: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        reviewers: {
-          include: {
-            reviewer: {
-              select: { id: true, name: true, email: true, image: true },
-            },
-          },
-          orderBy: { reviewedAt: "desc" },
-        },
-        comments: {
-          include: {
-            author: {
-              select: { id: true, name: true, email: true, image: true },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        repository: {
-          select: {
-            id: true,
-            name: true,
-            provider: true,
-            url: true,
-            localPath: true,
-            isCloned: true,
+          project: {
+            select: { id: true, name: true, slug: true },
           },
         },
-        project: {
-          select: { id: true, name: true, slug: true },
-        },
-      },
-    })
+      })
 
-    if (!pullRequest) {
-      return NextResponse.json(
-        { error: "PR不存在或无权限访问" },
-        { status: 404 },
-      )
-    }
+      if (!pullRequest) {
+        throw ApiError.notFound("PR不存在或无权限访问")
+      }
 
-    // 格式化响应数据
-    const formattedPR = {
-      ...pullRequest,
-      labels: pullRequest.labels ? JSON.parse(pullRequest.labels) : [],
-      reviewers: pullRequest.reviewers.map(r => ({
-        ...r.reviewer,
-        status: r.status,
-        reviewedAt: r.reviewedAt,
-      })),
-    }
+      // 格式化响应数据
+      const formattedPR = {
+        ...pullRequest,
+        labels: pullRequest.labels ? JSON.parse(pullRequest.labels) : [],
+        reviewers: pullRequest.reviewers.map(r => ({
+          ...r.reviewer,
+          status: r.status,
+          reviewedAt: r.reviewedAt,
+        })),
+      }
 
-    return NextResponse.json({ pullRequest: formattedPR })
-  } catch (error) {
-    console.error("获取PR详情失败:", error)
-    return NextResponse.json({ error: "获取PR详情失败" }, { status: 500 })
-  }
-}
+      return successResponse({ pullRequest: formattedPR })
+    },
+  ),
+)
 
 // 更新PR
 export async function PUT(

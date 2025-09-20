@@ -76,22 +76,24 @@ export function useDeploymentCreate() {
   const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   // 部署创建数据
-  const [deploymentData, setDeploymentData] = useState<DeploymentCreateData | null>(null)
-  
+  const [deploymentData, setDeploymentData] =
+    useState<DeploymentCreateData | null>(null)
+
   // 选中的项目
   const [selectedProject, setSelectedProject] = useState<Project | null>(null)
-  
+
   // 项目下的仓库列表
   const [repositories, setRepositories] = useState<Repository[]>([])
-  
+
   // 选中的仓库
-  const [selectedRepository, setSelectedRepository] = useState<Repository | null>(null)
-  
+  const [selectedRepository, setSelectedRepository] =
+    useState<Repository | null>(null)
+
   // 仓库的分支列表
   const [branches, setBranches] = useState<Branch[]>([])
-  
+
   // 选中的分支
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null)
 
@@ -102,15 +104,27 @@ export function useDeploymentCreate() {
     try {
       setLoading(true)
       setError(null)
-      
+
+      console.log("useDeploymentCreate: 请求部署创建数据")
+
       const response = await fetch("/api/deployments/create")
-      if (!response.ok) {
-        throw new Error("获取部署创建数据失败")
-      }
-      
       const data = await response.json()
-      setDeploymentData(data)
+
+      console.log("useDeploymentCreate: 部署创建API响应", data)
+
+      if (!response.ok) {
+        throw new Error(data.error || "获取部署创建数据失败")
+      }
+
+      // 适配统一API响应格式 {success: true, data: deploymentData}
+      if (data.success && data.data) {
+        setDeploymentData(data.data)
+      } else {
+        // 兼容旧格式直接返回部署数据
+        setDeploymentData(data)
+      }
     } catch (err) {
+      console.error("获取部署创建数据失败:", err)
       setError(err instanceof Error ? err.message : "获取部署创建数据失败")
     } finally {
       setLoading(false)
@@ -124,19 +138,35 @@ export function useDeploymentCreate() {
     try {
       setLoading(true)
       setError(null)
-      
-      const response = await fetch(`/api/deployments/projects/${projectId}/repositories`)
-      if (!response.ok) {
-        throw new Error("获取项目仓库列表失败")
-      }
-      
+
+      console.log("useDeploymentCreate: 请求项目仓库列表", { projectId })
+
+      const response = await fetch(
+        `/api/deployments/projects/${projectId}/repositories`,
+      )
       const data = await response.json()
-      setRepositories(data.repositories)
+
+      console.log("useDeploymentCreate: 项目仓库API响应", data)
+
+      if (!response.ok) {
+        throw new Error(data.error || "获取项目仓库列表失败")
+      }
+
+      // 适配统一API响应格式 {success: true, data: {repositories: [...]}}
+      if (data.success && data.data) {
+        setRepositories(data.data.repositories || [])
+      } else {
+        // 兼容旧格式直接返回repositories字段
+        setRepositories(data.repositories || [])
+      }
+
       setSelectedRepository(null)
       setBranches([])
       setSelectedBranch(null)
     } catch (err) {
+      console.error("获取项目仓库列表失败:", err)
       setError(err instanceof Error ? err.message : "获取项目仓库列表失败")
+      setRepositories([]) // 确保设置空数组防止undefined错误
     } finally {
       setLoading(false)
     }
@@ -149,45 +179,65 @@ export function useDeploymentCreate() {
     try {
       setLoading(true)
       setError(null)
-      
+
+      console.log("useDeploymentCreate: 请求仓库分支列表", { repositoryId })
+
       const response = await fetch(`/api/repositories/${repositoryId}/branches`)
-      if (!response.ok) {
-        throw new Error("获取仓库分支列表失败")
-      }
-      
       const data = await response.json()
-      setBranches(data.branches)
+
+      console.log("useDeploymentCreate: 仓库分支API响应", data)
+
+      if (!response.ok) {
+        throw new Error(data.error || "获取仓库分支列表失败")
+      }
+
+      // 适配统一API响应格式 {success: true, data: {branches: [...]}}
+      if (data.success && data.data) {
+        setBranches(data.data.branches || [])
+      } else {
+        // 兼容旧格式直接返回branches字段
+        setBranches(data.branches || [])
+      }
+
       setSelectedBranch(null)
     } catch (err) {
+      console.error("获取仓库分支列表失败:", err)
       setError(err instanceof Error ? err.message : "获取仓库分支列表失败")
+      setBranches([]) // 确保设置空数组防止undefined错误
     } finally {
       setLoading(false)
     }
   }, [])
 
   // 选择项目
-  const selectProject = useCallback((project: Project) => {
-    setSelectedProject(project)
-    setSelectedRepository(null)
-    setSelectedBranch(null)
-    setBranches([])
-    
-    // 自动获取项目下的仓库
-    if (project.id) {
-      fetchProjectRepositories(project.id)
-    }
-  }, [fetchProjectRepositories])
+  const selectProject = useCallback(
+    (project: Project) => {
+      setSelectedProject(project)
+      setSelectedRepository(null)
+      setSelectedBranch(null)
+      setBranches([])
+
+      // 自动获取项目下的仓库
+      if (project.id) {
+        fetchProjectRepositories(project.id)
+      }
+    },
+    [fetchProjectRepositories],
+  )
 
   // 选择仓库
-  const selectRepository = useCallback((repository: Repository) => {
-    setSelectedRepository(repository)
-    setSelectedBranch(null)
-    
-    // 自动获取仓库的分支
-    if (repository.id) {
-      fetchRepositoryBranches(repository.id)
-    }
-  }, [fetchRepositoryBranches])
+  const selectRepository = useCallback(
+    (repository: Repository) => {
+      setSelectedRepository(repository)
+      setSelectedBranch(null)
+
+      // 自动获取仓库的分支
+      if (repository.id) {
+        fetchRepositoryBranches(repository.id)
+      }
+    },
+    [fetchRepositoryBranches],
+  )
 
   // 选择分支
   const selectBranch = useCallback((branch: Branch) => {
@@ -195,37 +245,51 @@ export function useDeploymentCreate() {
   }, [])
 
   // 创建部署
-  const createDeployment = useCallback(async (formData: DeploymentFormData) => {
-    if (!selectedProject || !selectedRepository || !selectedBranch) {
-      throw new Error("请先选择项目、仓库和分支")
-    }
-
-    try {
-      setLoading(true)
-      setError(null)
-      
-      const response = await fetch("/api/deployments", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      })
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "创建部署失败")
+  const createDeployment = useCallback(
+    async (formData: DeploymentFormData) => {
+      if (!selectedProject || !selectedRepository || !selectedBranch) {
+        throw new Error("请先选择项目、仓库和分支")
       }
-      
-      const data = await response.json()
-      return data.deployment
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "创建部署失败")
-      throw err
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedProject, selectedRepository, selectedBranch])
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        console.log("useDeploymentCreate: 创建部署", { formData })
+
+        const response = await fetch("/api/deployments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(formData),
+        })
+
+        const data = await response.json()
+
+        console.log("useDeploymentCreate: 创建部署API响应", data)
+
+        if (!response.ok) {
+          throw new Error(data.error || "创建部署失败")
+        }
+
+        // 适配统一API响应格式 {success: true, data: {deployment: {...}}}
+        if (data.success && data.data) {
+          return data.data.deployment
+        } else {
+          // 兼容旧格式直接返回deployment字段
+          return data.deployment
+        }
+      } catch (err) {
+        console.error("创建部署失败:", err)
+        setError(err instanceof Error ? err.message : "创建部署失败")
+        throw err
+      } finally {
+        setLoading(false)
+      }
+    },
+    [selectedProject, selectedRepository, selectedBranch],
+  )
 
   // 初始化时获取部署创建数据
   useEffect(() => {
@@ -253,7 +317,7 @@ export function useDeploymentCreate() {
     selectedRepository,
     branches,
     selectedBranch,
-    
+
     // 方法
     fetchDeploymentData,
     fetchProjectRepositories,
@@ -263,10 +327,11 @@ export function useDeploymentCreate() {
     selectBranch,
     createDeployment,
     resetSelection,
-    
+
     // 计算属性
     canSelectRepository: !!selectedProject,
     canSelectBranch: !!selectedRepository,
-    canCreateDeployment: !!selectedProject && !!selectedRepository && !!selectedBranch,
+    canCreateDeployment:
+      !!selectedProject && !!selectedRepository && !!selectedBranch,
   }
 }

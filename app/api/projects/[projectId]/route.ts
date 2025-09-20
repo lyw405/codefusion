@@ -1,250 +1,234 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { z } from "zod"
-import { getCurrentUser, ApiError } from "@/lib/utils/auth"
-
-// 更新项目的验证模式
-const updateProjectSchema = z.object({
-  name: z.string().min(1, "项目名称不能为空").optional(),
-  description: z.string().optional(),
-  slug: z
-    .string()
-    .min(1, "项目标识不能为空")
-    .regex(/^[a-z0-9-]+$/, "项目标识只能包含小写字母、数字和连字符")
-    .optional(),
-  status: z
-    .enum([
-      "PLANNING",
-      "DEVELOPMENT",
-      "TESTING",
-      "STAGING",
-      "PRODUCTION",
-      "ARCHIVED",
-    ])
-    .optional(),
-  visibility: z.enum(["PRIVATE", "TEAM", "PUBLIC"]).optional(),
-})
+import {
+  successResponse,
+  noContentResponse,
+  handleApiError,
+  withAuth,
+  projectSchemas,
+  validateRequestBody,
+  validateId,
+  checkProjectAccess,
+  ApiError,
+} from "@/lib/api"
 
 // 获取项目详情
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { projectId: string } },
-) {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      const error = ApiError.notFound("系统中没有用户")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
+export const GET = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { projectId: string } },
+    ) => {
+      const { projectId } = params
+      validateId(projectId, "项目ID")
 
-    const { projectId } = params
+      // 检查项目访问权限
+      const hasAccess = await checkProjectAccess(user.id, projectId)
+      if (!hasAccess) {
+        throw ApiError.forbidden("项目不存在或无权限访问")
+      }
 
-    // 获取项目详情（包括权限检查）
-    const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
-      },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        members: {
-          include: {
-            user: {
-              select: { id: true, name: true, email: true, image: true },
+      // 获取项目详情
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          owner: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          members: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+            orderBy: { joinedAt: "asc" },
+          },
+          repositories: {
+            orderBy: { createdAt: "desc" },
+          },
+          deployments: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
+          activities: {
+            include: {
+              user: {
+                select: { id: true, name: true, email: true, image: true },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+          },
+          _count: {
+            select: {
+              members: true,
+              repositories: true,
+              deployments: true,
+              activities: true,
             },
           },
-          orderBy: { joinedAt: "asc" },
         },
-        repositories: {
-          orderBy: { createdAt: "desc" },
-        },
-        deployments: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-        activities: {
-          include: {
-            user: {
-              select: { id: true, name: true, email: true, image: true },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        },
-        _count: {
-          select: {
-            members: true,
-            repositories: true,
-            deployments: true,
-            activities: true,
-          },
-        },
-      },
-    })
-
-    if (!project) {
-      const error = ApiError.notFound("项目不存在或无权限访问")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
-    return NextResponse.json({ project })
-  } catch (error) {
-    console.error("获取项目详情失败:", error)
-    return NextResponse.json({ error: "获取项目详情失败" }, { status: 500 })
-  }
-}
-
-// 更新项目
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { projectId: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      const error = ApiError.unauthorized()
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
-    const user = await getCurrentUser()
-    if (!user) {
-      const error = ApiError.notFound("用户不存在")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
-    const { projectId } = params
-    const body = await request.json()
-    const validatedData = updateProjectSchema.parse(body)
-
-    // 检查项目是否存在和权限
-    const existingProject = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        OR: [
-          { ownerId: user.id },
-          {
-            members: {
-              some: { userId: user.id, role: { in: ["OWNER", "ADMIN"] } },
-            },
-          },
-        ],
-      },
-    })
-
-    if (!existingProject) {
-      const error = ApiError.notFound("项目不存在或无权限修改")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
-    // 如果更新 slug，检查是否已存在
-    if (validatedData.slug && validatedData.slug !== existingProject.slug) {
-      const slugExists = await prisma.project.findUnique({
-        where: { slug: validatedData.slug },
       })
 
-      if (slugExists) {
-        const error = ApiError.badRequest("项目标识已存在")
-        return NextResponse.json(
-          { error: error.error },
-          { status: error.status },
-        )
+      if (!project) {
+        throw ApiError.notFound("项目不存在")
       }
-    }
 
-    // 更新项目
-    const updatedProject = await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        ...validatedData,
-      },
-      include: {
-        owner: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        members: {
+      // 计算统计信息
+      const [successfulDeployments, totalDeployments] = await Promise.all([
+        prisma.deployment.count({
+          where: {
+            projectId,
+            status: "SUCCESS",
+          },
+        }),
+        prisma.deployment.count({
+          where: { projectId },
+        }),
+      ])
+
+      // 构建响应数据，添加统计信息
+      const projectWithStats = {
+        ...project,
+        totalCommits: 0, // TODO: 实际应该从 Git 仓库获取
+        totalPRs: 0, // TODO: 实际应该从数据库获取
+        totalDeployments,
+        successRate:
+          totalDeployments > 0
+            ? Math.round((successfulDeployments / totalDeployments) * 100)
+            : 0,
+      }
+
+      return successResponse(projectWithStats)
+    },
+  ),
+)
+
+// 更新项目
+export const PUT = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { projectId: string } },
+    ) => {
+      const { projectId } = params
+      validateId(projectId, "项目ID")
+
+      const data = await validateRequestBody(request, projectSchemas.update)
+
+      // 检查项目管理权限（只有拥有者和管理员可以修改）
+      const hasAccess = await checkProjectAccess(user.id, projectId, [
+        "OWNER",
+        "ADMIN",
+      ])
+      if (!hasAccess) {
+        throw ApiError.forbidden("项目不存在或无权限修改")
+      }
+
+      // 获取当前项目信息
+      const existingProject = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { slug: true, name: true },
+      })
+
+      if (!existingProject) {
+        throw ApiError.notFound("项目不存在")
+      }
+
+      // 如果更新 slug，检查是否已存在
+      if ((data as any).slug && (data as any).slug !== existingProject.slug) {
+        const slugExists = await prisma.project.findUnique({
+          where: { slug: (data as any).slug },
+        })
+
+        if (slugExists) {
+          throw ApiError.conflict("项目标识已存在")
+        }
+      }
+
+      // 更新项目（使用事务）
+      const updatedProject = await prisma.$transaction(async tx => {
+        const project = await tx.project.update({
+          where: { id: projectId },
+          data,
           include: {
-            user: {
+            owner: {
               select: { id: true, name: true, email: true, image: true },
             },
+            members: {
+              include: {
+                user: {
+                  select: { id: true, name: true, email: true, image: true },
+                },
+              },
+            },
+            _count: {
+              select: {
+                members: true,
+                repositories: true,
+                deployments: true,
+              },
+            },
           },
-        },
-      },
-    })
+        })
 
-    // 记录活动
-    await prisma.projectActivity.create({
-      data: {
-        type: "PROJECT_SETTINGS_CHANGED",
-        title: "项目设置已更新",
-        projectId: projectId,
-        userId: user.id,
-        metadata: JSON.stringify({
-          updatedFields: Object.keys(validatedData),
-        }),
-      },
-    })
+        // 记录活动
+        await tx.projectActivity.create({
+          data: {
+            type: "PROJECT_CREATED",
+            title: "项目设置已更新",
+            description: `更新了项目 ${project.name} 的设置`,
+            projectId,
+            userId: user.id,
+            metadata: JSON.stringify({
+              updatedFields: Object.keys(data),
+              changes: data,
+            }),
+          },
+        })
 
-    return NextResponse.json({
-      project: updatedProject,
-    })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.errors },
-        { status: 400 },
-      )
-    }
+        return project
+      })
 
-    console.error("更新项目失败:", error)
-    return NextResponse.json({ error: "更新项目失败" }, { status: 500 })
-  }
-}
+      return successResponse(updatedProject, "项目更新成功")
+    },
+  ),
+)
 
 // 删除项目
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { projectId: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      const error = ApiError.unauthorized()
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
+export const DELETE = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { projectId: string } },
+    ) => {
+      const { projectId } = params
+      validateId(projectId, "项目ID")
 
-    const user = await getCurrentUser()
-    if (!user) {
-      const error = ApiError.notFound("用户不存在")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
+      // 检查项目是否存在和权限（只有所有者可以删除）
+      const project = await prisma.project.findFirst({
+        where: {
+          id: projectId,
+          ownerId: user.id,
+        },
+        select: { id: true, name: true },
+      })
 
-    const { projectId } = params
+      if (!project) {
+        throw ApiError.forbidden(
+          "项目不存在或无权限删除（只有项目拥有者可以删除）",
+        )
+      }
 
-    // 检查项目是否存在和权限（只有所有者可以删除）
-    const existingProject = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        ownerId: user.id,
-      },
-    })
+      // 删除项目（由于有外键约束，相关数据会被级联删除）
+      await prisma.project.delete({
+        where: { id: projectId },
+      })
 
-    if (!existingProject) {
-      const error = ApiError.notFound("项目不存在或无权限删除")
-      return NextResponse.json({ error: error.error }, { status: error.status })
-    }
-
-    // 删除项目（由于有外键约束，相关数据会被级联删除）
-    await prisma.project.delete({
-      where: { id: projectId },
-    })
-
-    return NextResponse.json({ message: "项目删除成功" })
-  } catch (error) {
-    console.error("删除项目失败:", error)
-    return NextResponse.json({ error: "删除项目失败" }, { status: 500 })
-  }
-}
+      return noContentResponse()
+    },
+  ),
+)

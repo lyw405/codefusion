@@ -222,10 +222,23 @@ ${sourceCommit.message}
       }
       
       const result = await response.json()
-      console.log('PR创建成功:', result.pullRequest)
+      console.log('PR创建成功:', result)
+      
+      // 适配统一API响应格式 {success: true, data: pullRequest, message: "..."}
+      let pullRequest
+      if (result.success && result.data) {
+        pullRequest = result.data
+      } else {
+        // 兼容旧格式
+        pullRequest = result.pullRequest
+      }
+      
+      if (!pullRequest || !pullRequest.id) {
+        throw new Error('创建的PR数据格式错误')
+      }
       
       // 导航到PR详情页面
-      window.location.href = `/main/code-review/${result.pullRequest.id}`
+      window.location.href = `/main/code-review/${pullRequest.id}`
     } catch (error) {
       console.error('创建PR失败:', error)
       alert(error instanceof Error ? error.message : '创建PR失败')
@@ -263,10 +276,23 @@ ${sourceCommit.message}
       }
       
       const result = await response.json()
-      console.log('草稿PR创建成功:', result.pullRequest)
+      console.log('草稿PR创建成功:', result)
+      
+      // 适配统一API响应格式 {success: true, data: pullRequest, message: "..."}
+      let pullRequest
+      if (result.success && result.data) {
+        pullRequest = result.data
+      } else {
+        // 兼容旧格式
+        pullRequest = result.pullRequest
+      }
+      
+      if (!pullRequest || !pullRequest.id) {
+        throw new Error('创庺的草稿PR数据格式错误')
+      }
       
       // 导航到PR详情页面
-      window.location.href = `/main/code-review/${result.pullRequest.id}`
+      window.location.href = `/main/code-review/${pullRequest.id}`
     } catch (error) {
       console.error('创建草稿PR失败:', error)
       alert(error instanceof Error ? error.message : '创建草稿PR失败')

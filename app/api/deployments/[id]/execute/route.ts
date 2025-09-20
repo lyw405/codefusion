@@ -1,7 +1,6 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
+import { successResponse, handleApiError, withAuth, ApiError } from "@/lib/api"
 import { execSync, spawn } from "child_process"
 import path from "path"
 import fs from "fs"
@@ -35,92 +34,68 @@ function decrypt(encryptedText: string): string {
 }
 
 // 执行部署
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const POST = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const deploymentId = params.id
 
-    const deploymentId = params.id
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 获取部署信息
-    const deployment = await prisma.deployment.findFirst({
-      where: {
-        id: deploymentId,
-        project: {
-          OR: [
-            { ownerId: user.id },
-            {
-              members: {
-                some: {
-                  userId: user.id,
-                  canDeploy: true,
+      // 获取部署信息
+      const deployment = await prisma.deployment.findFirst({
+        where: {
+          id: deploymentId,
+          project: {
+            OR: [
+              { ownerId: user.id },
+              {
+                members: {
+                  some: {
+                    userId: user.id,
+                    role: { in: ["OWNER", "ADMIN", "DEVELOPER"] },
+                  },
                 },
               },
-            },
-          ],
+            ],
+          },
         },
-      },
-      include: {
-        project: true,
-        repository: true,
-      },
-    })
+        include: {
+          project: true,
+          repository: true,
+        },
+      })
 
-    if (!deployment) {
-      return NextResponse.json(
-        { error: "部署不存在或无权限访问" },
-        { status: 404 },
+      if (!deployment) {
+        throw ApiError.notFound("部署不存在或无权限访问")
+      }
+
+      // 检查部署状态
+      if (deployment.status !== "PENDING") {
+        throw ApiError.badRequest("部署已在执行中或已完成")
+      }
+
+      // 更新部署状态为执行中
+      await prisma.deployment.update({
+        where: { id: deploymentId },
+        data: { status: "RUNNING" },
+      })
+
+      // 异步执行部署任务
+      executeDeployment(deployment).catch(error => {
+        console.error(`部署 ${deploymentId} 执行失败:`, error)
+      })
+
+      return successResponse(
+        {
+          deploymentId: deploymentId,
+        },
+        "部署任务已启动",
       )
-    }
-
-    // 检查部署状态
-    if (deployment.status !== "PENDING") {
-      return NextResponse.json(
-        { error: "部署已在执行中或已完成" },
-        { status: 400 },
-      )
-    }
-
-    // 更新部署状态为执行中
-    await prisma.deployment.update({
-      where: { id: deploymentId },
-      data: { status: "RUNNING" },
-    })
-
-    // 异步执行部署任务
-    executeDeployment(deployment).catch(error => {
-      console.error(`部署 ${deploymentId} 执行失败:`, error)
-    })
-
-    return NextResponse.json({
-      message: "部署任务已启动",
-      deploymentId: deploymentId,
-    })
-  } catch (error: any) {
-    console.error("启动部署失败:", error)
-    return NextResponse.json(
-      {
-        error: "启动部署失败",
-        details: error.message,
-      },
-      { status: 500 },
-    )
-  }
-}
+    },
+  ),
+)
 
 // 执行部署的主要逻辑
 async function executeDeployment(deployment: any) {
