@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,9 +23,10 @@ import {
   Settings,
   Star,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Edit,
+  Eye
 } from "lucide-react"
-import { PageHeader } from "../components/common/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { usePRData } from "@/hooks/usePRData"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -36,32 +35,13 @@ export default function NewPRPage() {
   const [selectedProject, setSelectedProject] = useState("")
   const [selectedRepository, setSelectedRepository] = useState("")
   const [title, setTitle] = useState("")
-  const [description, setDescription] = useState(`## 功能概述
-
-实现基于JWT的用户认证系统，包括登录、注册、密码重置等功能。
-
-## 主要变更
-
-- 添加用户认证中间件
-- 实现JWT token生成和验证
-- 添加密码加密和验证
-- 实现用户注册和登录API
-- 添加密码重置功能
-
-## 测试
-
-- [x] 单元测试通过
-- [x] 集成测试通过
-- [x] E2E测试通过
-
-## 相关Issue
-
-Closes #123
-Related to #124`)
+  const [description, setDescription] = useState("")
   const [sourceBranch, setSourceBranch] = useState("")
   const [targetBranch, setTargetBranch] = useState("main")
   const [selectedReviewers, setSelectedReviewers] = useState<string[]>([])
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
+  const [hasAutoFilled, setHasAutoFilled] = useState(false)
+  const [activeTab, setActiveTab] = useState("details")
 
   // 使用真实的数据 hook
   const {
@@ -73,84 +53,12 @@ Related to #124`)
     loadingBranches,
     branchError,
     fetchBranches,
+    getLatestCommitFromBranch,
+    diffData,
+    loadingDiff,
+    diffError,
+    fetchBranchDiff,
   } = usePRData()
-
-  // 模拟diff文件数据
-  const mockDiffFiles: DiffFile[] = [
-    {
-      filename: "src/auth/auth.controller.ts",
-      status: "modified" as const,
-      additions: 45,
-      deletions: 12,
-      patch: `@@ -1,3 +1,4 @@
- import { Controller, Post, Body, UseGuards } from '@nestjs/common';
-+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
- import { AuthService } from './auth.service';
- import { LoginDto } from './dto/login.dto';`
-    },
-    {
-      filename: "src/auth/auth.service.ts", 
-      status: "modified" as const,
-      additions: 67,
-      deletions: 8,
-      patch: `@@ -1,5 +1,6 @@
- import { Injectable, UnauthorizedException } from '@nestjs/common';
- import { JwtService } from '@nestjs/jwt';
-+import { ConfigService } from '@nestjs/config';
- import { UsersService } from '../users/users.service';`
-    },
-    {
-      filename: "src/auth/dto/login.dto.ts",
-      status: "added" as const,
-      additions: 23,
-      deletions: 0,
-      patch: `@@ -0,0 +1,23 @@
-+import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator';
-+import { ApiProperty } from '@nestjs/swagger';
-+
-+export class LoginDto {
-+  @ApiProperty({
-+    description: '用户邮箱',
-+    example: 'user@example.com'
-+  })
-+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
-+  email: string;`
-    },
-    {
-      filename: "src/middleware/error-handler.ts",
-      status: "removed" as const,
-      additions: 0,
-      deletions: 35,
-      patch: `@@ -1,35 +0,0 @@
--import { Injectable, NestInterceptor } from '@nestjs/common';
--import { Observable, throwError } from 'rxjs';
--
--@Injectable()
--export class ErrorHandlerInterceptor implements NestInterceptor {
--  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {`
-    },
-    {
-      filename: "README.md",
-      status: "modified" as const,
-      additions: 8,
-      deletions: 2,
-      patch: `@@ -1,10 +1,16 @@
- # Auth Service
- 
--Authentication service for the application
-+Authentication service for the application with JWT support
- 
- ## Features
- 
--- User login
--- User registration
-+- User login with email/password
-+- User registration with validation
-+- JWT token generation
-+- Password encryption
-+- API documentation with Swagger`
-    }
-  ]
 
   // 获取当前项目的仓库列表
   const currentRepositories = selectedProject ? getProjectRepositories(selectedProject) : []
@@ -161,23 +69,67 @@ Related to #124`)
   // 处理项目选择变化
   const handleProjectChange = (projectId: string) => {
     setSelectedProject(projectId)
-    setSelectedRepository("") // 重置仓库选择
-    setSourceBranch("") // 重置分支选择
-    setTargetBranch("main") // 重置目标分支
-    setSelectedReviewers([]) // 重置评审者选择
+    setSelectedRepository("")
+    setSourceBranch("")
+    setTargetBranch("main")
+    setSelectedReviewers([])
+    setTitle("")
+    setDescription("")
+    setHasAutoFilled(false)
   }
 
   // 处理仓库选择变化
   const handleRepositoryChange = (repositoryId: string) => {
     setSelectedRepository(repositoryId)
-    setSourceBranch("") // 重置分支选择
+    setSourceBranch("")
+    setTitle("")
+    setDescription("")
+    setHasAutoFilled(false)
     
-    // 获取仓库的默认分支作为目标分支
     const repository = currentRepositories.find(repo => repo.id === repositoryId)
     setTargetBranch(repository?.defaultBranch || "main")
-    
-    // 获取该仓库的分支列表
     fetchBranches(repositoryId)
+  }
+
+  // 处理源分支选择变化
+  const handleSourceBranchChange = (branchName: string) => {
+    setSourceBranch(branchName)
+    setHasAutoFilled(false)
+    
+    // 立即尝试填充内容
+    if (branchName && branches.length > 0) {
+      const sourceCommit = getLatestCommitFromBranch(branchName)
+      if (sourceCommit) {
+        setTitle(sourceCommit.message)
+        
+        const formattedDescription = `## 功能概述
+
+${sourceCommit.message}
+
+## 主要变更
+
+- 请在此处描述具体变更内容
+
+## 提交信息
+
+**作者**: ${sourceCommit.author}
+**日期**: ${new Date(sourceCommit.date).toLocaleString()}
+**提交哈希**: ${sourceCommit.shortHash}
+
+## 测试
+
+- [ ] 单元测试通过
+- [ ] 集成测试通过
+- [ ] E2E测试通过
+
+## 相关Issue
+
+<!-- 请关联相关的Issue -->`
+        
+        setDescription(formattedDescription)
+        setHasAutoFilled(true)
+      }
+    }
   }
 
   // 监听仓库变化，自动获取分支
@@ -186,6 +138,49 @@ Related to #124`)
       fetchBranches(selectedRepository)
     }
   }, [selectedRepository, fetchBranches])
+
+  // 监听分支变化，自动获取差异和设置标题描述
+  useEffect(() => {
+    if (selectedRepository && sourceBranch && targetBranch) {
+      fetchBranchDiff(selectedRepository, sourceBranch, targetBranch)
+    }
+  }, [selectedRepository, sourceBranch, targetBranch, fetchBranchDiff])
+
+  // 监听源分支变化，自动填充标题和描述
+  useEffect(() => {
+    if (sourceBranch && branches.length > 0 && selectedRepository) {
+      const sourceCommit = getLatestCommitFromBranch(sourceBranch)
+      if (sourceCommit) {
+        // 总是使用最新的源分支提交信息更新标题
+        setTitle(sourceCommit.message)
+        
+        // 生成更详细的描述
+        const formattedDescription = `## 功能概述
+
+${sourceCommit.message}
+
+## 主要变更
+
+- 请在此处描述具体变更内容
+
+## 提交信息
+
+**作者**: ${sourceCommit.author}
+**日期**: ${new Date(sourceCommit.date).toLocaleString()}
+**提交哈希**: ${sourceCommit.shortHash}
+
+`
+        
+        setDescription(formattedDescription)
+        setHasAutoFilled(true)
+      }
+    } else if (!sourceBranch) {
+      // 如果没有选择源分支，清空标题和描述
+      setTitle("")
+      setDescription("")
+      setHasAutoFilled(false)
+    }
+  }, [sourceBranch, branches, selectedRepository, getLatestCommitFromBranch])
 
   const mockLabels = [
     { name: "feature", color: "bg-blue-500", description: "新功能" },
@@ -197,7 +192,6 @@ Related to #124`)
   ]
 
   const handleCreatePR = () => {
-    // 这里会调用API创建PR
     console.log("创建PR:", {
       title,
       description,
@@ -224,398 +218,619 @@ Related to #124`)
     )
   }
 
-
-
   return (
-    <div className="space-y-6">
-      {/* 页面头部 */}
-      <PageHeader
-        title="新建 Pull Request"
-        subtitle="创建新的代码审查请求"
-        icon={<Plus className="h-6 w-6 text-primary" />}
-      />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* GitHub风格的页面头部 */}
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center justify-center w-10 h-10 bg-green-100 dark:bg-green-900/20 rounded-full">
+              <GitPullRequest className="h-5 w-5 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+              Open a pull request
+            </h1>
+          </div>
+          <p className="text-gray-600 dark:text-gray-400 ml-13">
+            Create a new pull request by comparing changes across two branches.
+          </p>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 主要内容区域 */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* 1. 项目和分支配置 - 合并为一个卡片 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                项目和分支配置
-              </CardTitle>
-              <CardDescription>
-                选择项目、仓库和分支设置
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* 项目配置 */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">项目配置</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="project">项目</Label>
-                    <Select value={selectedProject} onValueChange={handleProjectChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择项目..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projectsLoading ? (
-                          <div className="flex items-center justify-center p-4">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="ml-2 text-sm">加载中...</span>
+        {/* GitHub风格的分支选择器 */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg mb-6 shadow-sm">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Compare changes
+            </h3>
+            
+            {/* 项目和仓库选择 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Project</Label>
+                <Select value={selectedProject} onValueChange={handleProjectChange}>
+                  <SelectTrigger className="h-10 border-gray-300 dark:border-gray-600">
+                    <SelectValue placeholder="Choose a project..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectsLoading ? (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="ml-2 text-sm">Loading...</span>
+                      </div>
+                    ) : projects.length === 0 ? (
+                      <div className="text-center p-4 text-muted-foreground">
+                        <span className="text-sm">No projects available</span>
+                      </div>
+                    ) : (
+                      projects.map(project => (
+                        <SelectItem key={project.id} value={project.id}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{project.name}</span>
+                            {project.description && (
+                              <span className="text-xs text-muted-foreground">{project.description}</span>
+                            )}
                           </div>
-                        ) : projects.length === 0 ? (
-                          <div className="text-center p-4 text-muted-foreground">
-                            <span className="text-sm">暂无可用项目</span>
-                          </div>
-                        ) : (
-                          projects.map(project => (
-                            <SelectItem key={project.id} value={project.id}>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{project.name}</span>
-                                <span className="text-xs text-muted-foreground">{project.description}</span>
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="repository">仓库</Label>
-                    <Select 
-                      value={selectedRepository} 
-                      onValueChange={handleRepositoryChange}
-                      disabled={!selectedProject}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedProject ? "选择仓库..." : "请先选择项目"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {currentRepositories.length === 0 ? (
-                          <div className="text-center p-4 text-muted-foreground">
-                            <span className="text-sm">该项目暂无仓库</span>
-                          </div>
-                        ) : (
-                          currentRepositories.map(repo => (
-                            <SelectItem key={repo.id} value={repo.id}>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{repo.name}</span>
-                                <span className="text-xs text-muted-foreground">{repo.provider}</span>
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* 分支设置 */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">分支设置</h4>
-                {!selectedProject || !selectedRepository ? (
-                  <div className="text-center py-6 text-muted-foreground bg-gray-50 dark:bg-gray-900 rounded-lg">
-                    <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">请先选择项目和仓库</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* 分支错误提示 */}
-                    {branchError && (
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{branchError}</AlertDescription>
-                      </Alert>
+                        </SelectItem>
+                      ))
                     )}
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="source-branch">源分支</Label>
-                        <Select 
-                          value={sourceBranch} 
-                          onValueChange={setSourceBranch}
-                          disabled={!selectedRepository || loadingBranches}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={loadingBranches ? "加载中..." : "选择源分支"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {loadingBranches ? (
-                              <div className="flex items-center justify-center p-4">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="ml-2 text-sm">加载中...</span>
-                              </div>
-                            ) : branches.length === 0 ? (
-                              <div className="text-center p-4 text-muted-foreground">
-                                <span className="text-sm">暂无可用分支</span>
-                              </div>
-                            ) : (
-                              branches.filter(branch => branch.name !== targetBranch).map(branch => (
-                                <SelectItem key={branch.name} value={branch.name}>
-                                  <div className="flex items-center gap-2">
-                                    <GitBranch className="h-3 w-3" />
-                                    <span>{branch.name}</span>
-                                    {branch.isDefault && (
-                                      <Badge variant="outline" className="text-xs">默认</Badge>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Repository</Label>
+                <Select 
+                  value={selectedRepository} 
+                  onValueChange={handleRepositoryChange}
+                  disabled={!selectedProject}
+                >
+                  <SelectTrigger className="h-10 border-gray-300 dark:border-gray-600">
+                    <SelectValue placeholder={selectedProject ? "Choose a repository..." : "Select project first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentRepositories.length === 0 ? (
+                      <div className="text-center p-4 text-muted-foreground">
+                        <span className="text-sm">No repositories found</span>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="target-branch">目标分支</Label>
-                        <Select 
-                          value={targetBranch} 
-                          onValueChange={setTargetBranch}
-                          disabled={!selectedRepository || loadingBranches}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={loadingBranches ? "加载中..." : "选择目标分支"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {loadingBranches ? (
-                              <div className="flex items-center justify-center p-4">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="ml-2 text-sm">加载中...</span>
-                              </div>
-                            ) : branches.length === 0 ? (
-                              <div className="text-center p-4 text-muted-foreground">
-                                <span className="text-sm">暂无可用分支</span>
-                              </div>
-                            ) : (
-                              branches.filter(branch => branch.name !== sourceBranch).map(branch => (
-                                <SelectItem key={branch.name} value={branch.name}>
-                                  <div className="flex items-center gap-2">
-                                    <GitBranch className="h-3 w-3" />
-                                    <span>{branch.name}</span>
-                                    {branch.isDefault && (
-                                      <Badge variant="outline" className="text-xs">默认</Badge>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
+                    ) : (
+                      currentRepositories.map(repo => (
+                        <SelectItem key={repo.id} value={repo.id}>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-4 h-4 bg-gray-100 dark:bg-gray-800 rounded">
+                              <Code className="h-3 w-3 text-gray-600 dark:text-gray-400" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{repo.name}</span>
+                              <span className="text-xs text-muted-foreground">{repo.provider}</span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* GitHub风格的分支比较器 */}
+            {selectedProject && selectedRepository ? (
+              <div className="space-y-4">
+                {branchError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{branchError}</AlertDescription>
+                  </Alert>
+                )}
+                
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Comparing changes across:</span>
+                  
+                  {/* 目标分支 */}
+                  <Select 
+                    value={targetBranch} 
+                    onValueChange={setTargetBranch}
+                    disabled={!selectedRepository || loadingBranches}
+                  >
+                    <SelectTrigger className="h-9 w-auto min-w-[140px] bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-4 w-4" />
+                        <SelectValue placeholder="base" />
                       </div>
-                    </div>
-                    
-                    {/* 分支关系预览 */}
-                    {sourceBranch && targetBranch && (
-                      <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <GitBranch className="h-4 w-4 text-blue-600" />
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
-                            {sourceBranch}
-                          </Badge>
-                          <span className="text-blue-600 font-medium">→</span>
-                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
-                            {targetBranch}
-                          </Badge>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingBranches ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="ml-2 text-sm">Loading...</span>
                         </div>
-                        <span className="text-sm text-blue-700 dark:text-blue-300">
-                          将合并到目标分支
-                        </span>
+                      ) : branches.length === 0 ? (
+                        <div className="text-center p-4 text-muted-foreground">
+                          <span className="text-sm">No branches found</span>
+                        </div>
+                      ) : (
+                        branches.filter(branch => branch.name !== sourceBranch).map(branch => (
+                          <SelectItem key={branch.name} value={branch.name}>
+                            <div className="flex items-center gap-2">
+                              <GitBranch className="h-3 w-3" />
+                              <span>{branch.name}</span>
+                              {branch.isDefault && (
+                                <Badge variant="outline" className="text-xs">default</Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  
+                  <span className="text-gray-400 text-lg">←</span>
+                  
+                  {/* 源分支 */}
+                  <Select 
+                    value={sourceBranch} 
+                    onValueChange={handleSourceBranchChange}
+                    disabled={!selectedRepository || loadingBranches}
+                  >
+                    <SelectTrigger className="h-9 w-auto min-w-[140px] bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600">
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="h-4 w-4" />
+                        <SelectValue placeholder="compare" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {loadingBranches ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="ml-2 text-sm">Loading...</span>
+                        </div>
+                      ) : branches.length === 0 ? (
+                        <div className="text-center p-4 text-muted-foreground">
+                          <span className="text-sm">No branches found</span>
+                        </div>
+                      ) : (
+                        branches.filter(branch => branch.name !== targetBranch).map(branch => (
+                          <SelectItem key={branch.name} value={branch.name}>
+                            <div className="flex items-center gap-2">
+                              <GitBranch className="h-3 w-3" />
+                              <span>{branch.name}</span>
+                              {branch.isDefault && (
+                                <Badge variant="outline" className="text-xs">default</Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* 分支比较状态 */}
+                {sourceBranch && targetBranch && (
+                  <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center justify-center w-6 h-6 bg-green-500 rounded-full">
+                      <Check className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                        Able to merge
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        These branches can be automatically merged.
+                      </p>
+                    </div>
+                    {diffData && (
+                      <div className="text-sm text-green-700 dark:text-green-300">
+                        {diffData.diff.stats.filesChanged} file{diffData.diff.stats.filesChanged !== 1 ? 's' : ''} changed
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* 2. PR 基本信息 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                基本信息
-              </CardTitle>
-              <CardDescription>
-                填写PR的标题和描述信息
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">标题</Label>
-                <Input
-                  id="title"
-                  placeholder="请输入PR标题..."
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p className="text-sm">Select a project and repository to start comparing branches</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">描述</Label>
-                <Tabs defaultValue="edit" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="edit">编辑</TabsTrigger>
-                    <TabsTrigger value="preview">预览</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="edit" className="mt-4">
-                    <Textarea
-                      id="description"
-                      placeholder="请描述此次代码变更的内容、原因和影响...&#10;&#10;支持 Markdown 格式：&#10;- 使用 ## 添加标题&#10;- 使用 - [x] 标记完成的任务&#10;- 使用 **粗体** 和 *斜体*&#10;- 使用 ```代码块```"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={8}
-                    />
-                  </TabsContent>
-                  <TabsContent value="preview" className="mt-4">
-                    <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 min-h-[200px]">
-                      <MarkdownPreview content={description} />
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+        </div>
 
-          {/* 3. 代码变更详情 */}
-          {!sourceBranch || !targetBranch ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5" />
-                  代码变更详情
-                </CardTitle>
-                <CardDescription>
-                  查看具体的文件变更和代码差异
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Code className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium mb-2">选择分支以查看代码变更</p>
-                  <p className="text-sm">系统将显示两个分支之间的详细代码差异</p>
+        {/* Tab 导航 */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm mb-6">
+          <div className="border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center">
+              <button
+                onClick={() => setActiveTab("details")}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "details"
+                    ? "border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/10"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Pull request details
                 </div>
-              </CardContent>
-            </Card>
+              </button>
+              <button
+                onClick={() => setActiveTab("files")}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "files"
+                    ? "border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/10"
+                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Code className="h-4 w-4" />
+                  Files changed
+                  {diffData && diffData.diff.stats.filesChanged > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+                      {diffData.diff.stats.filesChanged}
+                    </Badge>
+                  )}
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab 内容 */}
+        <div className="min-h-[600px]">
+          
+          {activeTab === "details" ? (
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+              {/* 主表单区域 */}
+              <div className="xl:col-span-3 space-y-6">
+                {/* PR 标题卡片 */}
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                          Pull Request Title
+                        </h3>
+                      </div>
+                      {sourceBranch && getLatestCommitFromBranch(sourceBranch) && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                          <GitBranch className="h-3 w-3" />
+                          Auto-filled from {sourceBranch}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <Input
+                      placeholder="Add a descriptive title for your pull request"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="text-lg font-medium border-gray-300 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500 placeholder:text-gray-400"
+                    />
+                    {sourceBranch && getLatestCommitFromBranch(sourceBranch) && (
+                      <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <GitBranch className="h-3 w-3 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                              Latest commit from {sourceBranch}
+                            </p>
+                            <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
+                              {getLatestCommitFromBranch(sourceBranch)?.message}
+                            </p>
+                            <div className="flex items-center gap-4 text-xs text-blue-600 dark:text-blue-400">
+                              <span>by {getLatestCommitFromBranch(sourceBranch)?.author}</span>
+                              <span>{getLatestCommitFromBranch(sourceBranch)?.shortHash}</span>
+                              <span>{new Date(getLatestCommitFromBranch(sourceBranch)?.date || '').toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* PR 描述卡片 */}
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Edit className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                          Description
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Markdown supported
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6">
+                    <Tabs defaultValue="write" className="w-full">
+                      <TabsList className="h-9 bg-gray-100 dark:bg-gray-800 p-1 mb-4">
+                        <TabsTrigger value="write" className="h-7 px-4 text-sm font-medium">
+                          Write
+                        </TabsTrigger>
+                        <TabsTrigger value="preview" className="h-7 px-4 text-sm font-medium">
+                          Preview
+                        </TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="write" className="mt-0">
+                        <div className="relative">
+                          <Textarea
+                            placeholder="Describe your changes in detail. What problem does this solve? How did you implement it? Are there any breaking changes?"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={15}
+                            className="min-h-[350px] resize-none border-gray-300 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500 font-mono text-sm"
+                          />
+                          <div className="absolute bottom-3 right-3 text-xs text-gray-400">
+                            {description.length} characters
+                          </div>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="preview" className="mt-0">
+                        <div className="min-h-[350px] p-6 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                          {description ? (
+                            <MarkdownPreview content={description} />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center">
+                              <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
+                                <Eye className="h-8 w-8 text-gray-400" />
+                              </div>
+                              <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">
+                                Nothing to preview
+                              </p>
+                              <p className="text-gray-400 dark:text-gray-500 text-xs">
+                                Write something in the description to see a preview
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                </div>
+              </div>
+
+              {/* 右侧栏 - 固定高度和滚动 */}
+              <div className="xl:col-span-1">
+                <div className="sticky top-6 space-y-4 max-h-[calc(100vh-8rem)] overflow-hidden">
+                  {/* 审查者卡片 */}
+                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <Users className="h-4 w-4" />
+                        Reviewers
+                        {selectedReviewers.length > 0 && (
+                          <Badge variant="secondary" className="ml-auto text-xs">
+                            {selectedReviewers.length}
+                          </Badge>
+                        )}
+                      </h3>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      <div className="p-4">
+                        {!selectedProject ? (
+                          <div className="text-center py-6">
+                            <Users className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Select a project first
+                            </p>
+                          </div>
+                        ) : currentReviewers.length === 0 ? (
+                          <div className="text-center py-6">
+                            <Users className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              No reviewers available
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {currentReviewers.map((reviewer) => (
+                              <div 
+                                key={reviewer.id}
+                                className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
+                                  selectedReviewers.includes(reviewer.id)
+                                    ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
+                                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-600'
+                                }`}
+                                onClick={() => toggleReviewer(reviewer.id)}
+                              >
+                                <Avatar className="h-8 w-8 ring-2 ring-white dark:ring-gray-800 flex-shrink-0">
+                                  <AvatarFallback className="text-xs font-medium bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                                    {reviewer.name?.[0] || reviewer.email[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                    {reviewer.name || reviewer.email}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize">
+                                    {reviewer.role.toLowerCase()}
+                                  </p>
+                                </div>
+                                {selectedReviewers.includes(reviewer.id) && (
+                                  <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <Check className="h-3 w-3 text-white" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 标签卡片 */}
+                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <Star className="h-4 w-4" />
+                        Labels
+                        {selectedLabels.length > 0 && (
+                          <Badge variant="secondary" className="ml-auto text-xs">
+                            {selectedLabels.length}
+                          </Badge>
+                        )}
+                      </h3>
+                    </div>
+                    <div className="p-4">
+                        <div className="space-y-2">
+                          {mockLabels.map((label) => (
+                            <div 
+                              key={label.name}
+                              className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
+                                selectedLabels.includes(label.name)
+                                  ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
+                                  : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-600'
+                              }`}
+                              onClick={() => toggleLabel(label.name)}
+                            >
+                              <div className={`w-4 h-4 rounded-full ${label.color} ring-2 ring-white dark:ring-gray-800 flex-shrink-0`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                  {label.name}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {label.description}
+                                </p>
+                              </div>
+                              {selectedLabels.includes(label.name) && (
+                                <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                  <Check className="h-3 w-3 text-white" />
+                                </div>
+                              )}
+                            </div>
+                          ))}  
+                        </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           ) : (
-            <CodeDiffViewer
-              files={mockDiffFiles}
-              title="代码变更详情"
-              description={`${sourceBranch} → ${targetBranch} 的文件差异`}
-              showStats={true}
-            />
+            /* Files changed 页面 */
+            <div className="space-y-6">
+              {sourceBranch && targetBranch ? (
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+                  <div className="border-b border-gray-200 dark:border-gray-700 p-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {loadingDiff ? "Loading changes..." : "Files changed"}
+                      </h3>
+                      {diffData && (
+                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                          <span>
+                            {diffData.diff.stats.filesChanged} file{diffData.diff.stats.filesChanged !== 1 ? 's' : ''}
+                          </span>
+                          <span className="text-green-600 dark:text-green-400">
+                            +{diffData.diff.stats.insertions}
+                          </span>
+                          <span className="text-red-600 dark:text-red-400">
+                            -{diffData.diff.stats.deletions}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="p-6">
+                    {loadingDiff ? (
+                      <div className="text-center py-20">
+                        <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-blue-500" />
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Analyzing code changes...
+                        </p>
+                      </div>
+                    ) : diffError ? (
+                      <div className="text-center py-20">
+                        <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-red-100 dark:bg-red-900/20 rounded-full">
+                          <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        </div>
+                        <p className="text-sm text-gray-900 dark:text-gray-100 mb-2">
+                          Unable to load changes
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                          {diffError}
+                        </p>
+                        <Button 
+                          onClick={() => fetchBranchDiff(selectedRepository, sourceBranch, targetBranch)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    ) : diffData && diffData.diff.files.length > 0 ? (
+                      <CodeDiffViewer
+                        files={diffData.diff.files.map(file => ({
+                          filename: file.filename,
+                          status: file.status,
+                          additions: file.additions,
+                          deletions: file.deletions,
+                          patch: file.patch,
+                        }))}
+                        title=""
+                        description=""
+                        showStats={false}
+                        className="border-0 shadow-none bg-transparent"
+                      />
+                    ) : (
+                      <div className="text-center py-20">
+                        <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-green-100 dark:bg-green-900/20 rounded-full">
+                          <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        </div>
+                        <p className="text-sm text-gray-900 dark:text-gray-100 mb-2">
+                          No changes detected
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          These branches are identical
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
+                  <div className="text-center py-20 text-gray-500 dark:text-gray-400">
+                    <Code className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">Select source and target branches to view file changes</p>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {/* 侧边栏 */}
-        <div className="space-y-6">
-          {/* 审查者 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                审查者
-              </CardTitle>
-              <CardDescription>
-                选择代码审查者
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!selectedProject ? (
-                <div className="text-center py-6 text-muted-foreground">
-                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">请先选择项目</p>
-                  <p className="text-xs">项目成员将作为可选审查者</p>
-                </div>
-              ) : currentReviewers.length === 0 ? (
-                <div className="text-center py-6 text-muted-foreground">
-                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">该项目暂无可用审查者</p>
-                </div>
-              ) : (
-                currentReviewers.map((reviewer) => (
-                  <div 
-                    key={reviewer.id}
-                    className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                      selectedReviewers.includes(reviewer.id)
-                        ? 'bg-primary/10 border border-primary/20'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-900'
-                    }`}
-                    onClick={() => toggleReviewer(reviewer.id)}
-                  >
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>{reviewer.name?.[0] || reviewer.email[0]}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{reviewer.name || reviewer.email}</p>
-                      <p className="text-xs text-muted-foreground">{reviewer.email}</p>
-                      <p className="text-xs text-blue-600">{reviewer.role}</p>
-                    </div>
-                    {selectedReviewers.includes(reviewer.id) && (
-                      <Check className="h-4 w-4 text-primary" />
-                    )}
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
 
-          {/* 标签 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Star className="h-5 w-5" />
-                标签
-              </CardTitle>
-              <CardDescription>
-                为PR添加标签
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {mockLabels.map((label) => (
-                  <div 
-                    key={label.name}
-                    className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                      selectedLabels.includes(label.name)
-                        ? 'bg-primary/10 border border-primary/20'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-900'
-                    }`}
-                    onClick={() => toggleLabel(label.name)}
-                  >
-                    <div className={`w-3 h-3 rounded-full ${label.color}`} />
-                    <span className="text-sm font-medium">{label.name}</span>
-                    <span className="text-xs text-muted-foreground">{label.description}</span>
-                    {selectedLabels.includes(label.name) && (
-                      <Check className="h-4 w-4 text-primary ml-auto" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* 创建按钮 */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="space-y-3">
-                <Button 
-                  className="w-full" 
-                  onClick={handleCreatePR}
-                  disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
-                >
-                  <GitPullRequest className="h-4 w-4 mr-2" />
-                  创建 Pull Request
-                </Button>
-                <Button variant="outline" className="w-full">
-                  <Settings className="h-4 w-4 mr-2" />
-                  保存为草稿
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+        {/* GitHub风格的底部操作栏 */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm mt-6">
+          <div className="p-6">
+            <div className="flex items-center justify-end gap-3">
+              <Button 
+                variant="outline"
+                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
+              >
+                Create draft pull request
+              </Button>
+              <Button 
+                onClick={handleCreatePR}
+                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
+                className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
+              >
+                Create pull request
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

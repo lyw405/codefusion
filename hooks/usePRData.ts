@@ -5,8 +5,42 @@ import { useProjects } from "./useProjects"
 
 export interface Branch {
   name: string
-  type: "local" | "remote"
+  fullName: string
+  commit: {
+    hash: string
+    shortHash: string
+    message: string
+    author: string
+    date: string
+  }
   isDefault: boolean
+}
+
+export interface DiffFile {
+  filename: string
+  status: "added" | "modified" | "removed" | "renamed"
+  additions: number
+  deletions: number
+  patch: string
+}
+
+export interface BranchDiff {
+  repository: {
+    id: string
+    name: string
+    url: string
+    provider: string
+  }
+  sourceBranch: string
+  targetBranch: string
+  diff: {
+    stats: {
+      filesChanged: number
+      insertions: number
+      deletions: number
+    }
+    files: DiffFile[]
+  }
 }
 
 export interface PRRepository {
@@ -36,6 +70,11 @@ export function usePRData() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [loadingBranches, setLoadingBranches] = useState(false)
   const [branchError, setBranchError] = useState<string | null>(null)
+  
+  // 分支差异相关状态
+  const [diffData, setDiffData] = useState<BranchDiff | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState(false)
+  const [diffError, setDiffError] = useState<string | null>(null)
 
   // 转换项目数据为 PR 创建所需的格式
   const prProjects: PRProject[] = projects.map(project => ({
@@ -93,6 +132,49 @@ export function usePRData() {
     }
   }, [])
 
+  // 获取分支差异
+  const fetchBranchDiff = useCallback(async (
+    repositoryId: string,
+    sourceBranch: string,
+    targetBranch: string,
+  ) => {
+    if (!repositoryId || !sourceBranch || !targetBranch) {
+      setDiffData(null)
+      return
+    }
+
+    setLoadingDiff(true)
+    setDiffError(null)
+
+    try {
+      const response = await fetch(
+        `/api/repositories/${repositoryId}/diff?source=${encodeURIComponent(sourceBranch)}&target=${encodeURIComponent(targetBranch)}`
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        setDiffData(data)
+      } else {
+        const errorData = await response.json()
+        setDiffError(errorData.error || "获取分支差异失败")
+      }
+    } catch (error) {
+      console.error("获取分支差异失败:", error)
+      setDiffError("网络错误，请稍后重试")
+    } finally {
+      setLoadingDiff(false)
+    }
+  }, [])
+
+  // 获取分支的最新提交信息
+  const getLatestCommitFromBranch = useCallback(
+    (branchName: string): Branch['commit'] | null => {
+      const branch = branches.find(b => b.name === branchName)
+      return branch?.commit || null
+    },
+    [branches]
+  )
+
   // 根据项目 ID 获取仓库列表
   const getProjectRepositories = useCallback(
     (projectId: string) => {
@@ -132,6 +214,13 @@ export function usePRData() {
     loadingBranches,
     branchError,
     fetchBranches,
+    getLatestCommitFromBranch,
+
+    // 分支差异相关
+    diffData,
+    loadingDiff,
+    diffError,
+    fetchBranchDiff,
 
     // 刷新函数
     refreshProjects: fetchProjects,

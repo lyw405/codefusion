@@ -1,18 +1,22 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 import { 
   Code, 
-  Settings, 
+  FileText,
   Plus,
   Edit,
   Minus,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  GitCommit,
+  File,
+  FolderOpen,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import { MonacoCodeDiff } from "./MonacoCodeDiff"
 import { DiffFile } from "../types/diff"
@@ -33,8 +37,8 @@ interface CodeDiffViewerProps {
 
 export function CodeDiffViewer({
   files,
-  title = "代码变更",
-  description = "查看文件变更和代码差异",
+  title = "Files changed",
+  description = "Review and compare file changes",
   onFileSelect,
   selectedFile,
   showStats = true,
@@ -42,6 +46,7 @@ export function CodeDiffViewer({
 }: CodeDiffViewerProps) {
   // 默认展开所有文件
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set(files.map(file => file.filename)))
+  const [showAllFiles, setShowAllFiles] = useState(true)
 
   // 使用文件差异处理hook
   const { stats, hasConflicts } = useFileDiff(files)
@@ -57,6 +62,16 @@ export function CodeDiffViewer({
     setExpandedFiles(newExpanded)
   }
 
+  // 展开所有文件
+  const expandAllFiles = () => {
+    setExpandedFiles(new Set(files.map(file => file.filename)))
+  }
+
+  // 收起所有文件
+  const collapseAllFiles = () => {
+    setExpandedFiles(new Set())
+  }
+
   // 获取文件状态图标
   const getStatusIcon = (status: DiffFile["status"]) => {
     const { icon, color } = getFileStatusIcon(status)
@@ -65,118 +80,177 @@ export function CodeDiffViewer({
   }
 
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Code className="h-5 w-5" />
-          {title}
-        </CardTitle>
-        {description && (
-          <CardDescription>{description}</CardDescription>
-        )}
-      </CardHeader>
-      
-      <CardContent className="space-y-4">
-        {/* 统计信息 */}
-        {showStats && (
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-            <div className="flex items-center gap-4">
+    <div className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden ${className}`}>
+      {/* Header */}
+      <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">文件:</span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">{stats.totalFiles}</span>
+                <GitCommit className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {title}
+                </h3>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                  +{stats.totalAdditions}
-                </span>
-                <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                  -{stats.totalDeletions}
-                </span>
-              </div>
-              {hasConflicts && (
-                <Badge variant="destructive" className="text-xs">
-                  存在冲突
-                </Badge>
+              {showStats && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    {stats.totalFiles} file{stats.totalFiles !== 1 ? 's' : ''}
+                  </span>
+                  {stats.totalAdditions > 0 && (
+                    <span className="text-green-600 dark:text-green-400 font-medium">
+                      +{stats.totalAdditions}
+                    </span>
+                  )}
+                  {stats.totalDeletions > 0 && (
+                    <span className="text-red-600 dark:text-red-400 font-medium">
+                      -{stats.totalDeletions}
+                    </span>
+                  )}
+                  {hasConflicts && (
+                    <Badge variant="destructive" className="text-xs">
+                      Conflicts
+                    </Badge>
+                  )}
+                </div>
               )}
             </div>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
-              <Settings className="h-3 w-3 mr-1" />
-              设置
-            </Button>
+            
+            {/* Action buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={expandedFiles.size === files.length ? collapseAllFiles : expandAllFiles}
+                className="h-8 text-xs"
+              >
+                {expandedFiles.size === files.length ? (
+                  <>
+                    <EyeOff className="h-3 w-3 mr-1" />
+                    Collapse all
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3 w-3 mr-1" />
+                    Expand all
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-        )}
+          
+          {description && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {description}
+            </p>
+          )}
+        </div>
+      </div>
 
-        {/* 文件列表 */}
+      {/* File list */}
+      <div className="divide-y divide-gray-200 dark:divide-gray-700">
         {files.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Code className="h-16 w-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium mb-2">暂无文件变更</p>
-            <p className="text-sm">当前没有检测到任何代码差异</p>
+          <div className="text-center py-16">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                <Code className="h-8 w-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+                No files changed
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                There are no file changes to display
+              </p>
+            </div>
           </div>
         ) : (
-          <div className="space-y-2">
-            {files.map((file) => {
-              const isExpanded = expandedFiles.has(file.filename)
-              const statusBadge = getFileStatusBadge(file.status)
-              
-              return (
-                <div key={file.filename} className={`rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden hover:border-gray-300 dark:hover:border-gray-600 transition-all duration-200 ${getFileStatusColor(file.status)} ${
-                  selectedFile === file.filename ? 'ring-2 ring-blue-500/20 border-blue-300 dark:border-blue-600' : ''
-                }`}>
-                  {/* 文件头部 */}
-                  <div 
-                    className="flex items-center justify-between px-3 py-2.5 cursor-pointer hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors"
-                    onClick={() => {
-                      if (onFileSelect) {
-                        onFileSelect(file.filename)
-                      }
-                      toggleFileExpansion(file.filename)
-                    }}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+          files.map((file) => {
+            const isExpanded = expandedFiles.has(file.filename)
+            const statusBadge = getFileStatusBadge(file.status)
+            
+            return (
+              <div key={file.filename} className={`group transition-all duration-200 ${
+                selectedFile === file.filename ? 'bg-blue-50 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/30'
+              }`}>
+                {/* File header */}
+                <div 
+                  className="flex items-center justify-between px-4 py-3 cursor-pointer"
+                  onClick={() => {
+                    if (onFileSelect) {
+                      onFileSelect(file.filename)
+                    }
+                    toggleFileExpansion(file.filename)
+                  }}
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      >
                         {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
                         ) : (
-                          <ChevronRight className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                          <ChevronRight className="h-4 w-4 text-gray-500" />
                         )}
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <File className="h-4 w-4 text-gray-400" />
                         {getStatusIcon(file.status)}
                       </div>
-                      <span className="font-mono text-sm text-gray-900 dark:text-gray-100 truncate">
+                    </div>
+                    
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <span className="font-mono text-sm text-gray-900 dark:text-gray-100 truncate font-medium">
                         {file.filename}
                       </span>
-                      <Badge className={`text-xs px-2 py-1 ${statusBadge.className}`}>
+                      <Badge 
+                        variant="outline" 
+                        className={`text-xs px-2 py-0.5 ${statusBadge.className}`}
+                      >
                         {statusBadge.text}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-2 text-sm flex-shrink-0">
-                      {file.additions > 0 && (
-                        <span className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 px-2 py-1 rounded-md text-xs font-medium">
-                          +{file.additions}
-                        </span>
-                      )}
-                      {file.deletions > 0 && (
-                        <span className="bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400 px-2 py-1 rounded-md text-xs font-medium">
-                          -{file.deletions}
-                        </span>
-                      )}
-                    </div>
                   </div>
                   
-                  {/* 文件内容 - 使用MonacoCodeDiff显示详细差异 */}
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 dark:border-gray-800">
-                      <MonacoCodeDiff
-                        fileDiff={DiffParser.parseFileDiff(file.filename, file.patch, file.status)}
-                      />
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 text-sm flex-shrink-0">
+                    {(file.additions > 0 || file.deletions > 0) && (
+                      <div className="flex items-center gap-2">
+                        {file.additions > 0 && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
+                            <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                              +{file.additions}
+                            </span>
+                          </div>
+                        )}
+                        {file.deletions > 0 && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
+                            <span className="text-xs font-medium text-red-700 dark:text-red-400">
+                              -{file.deletions}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
+                
+                {/* File content */}
+                {isExpanded && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
+                    <MonacoCodeDiff
+                      fileDiff={DiffParser.parseFileDiff(file.filename, file.patch, file.status)}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

@@ -2,27 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import {
-  cloneRepository,
-  getRepositoryBranchesWithCommits,
-  getLatestCommit,
-} from "@/lib/utils/git"
+import { getBranchDiff, cloneRepository } from "@/lib/utils/git"
 
-// 分支信息接口
-interface Branch {
-  name: string
-  fullName: string
-  commit: {
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  }
-  isDefault: boolean
-}
-
-// 获取仓库分支列表
+// 获取两个分支间的差异
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } },
@@ -34,6 +16,16 @@ export async function GET(
     }
 
     const repositoryId = params.id
+    const { searchParams } = new URL(request.url)
+    const sourceBranch = searchParams.get("source")
+    const targetBranch = searchParams.get("target")
+
+    if (!sourceBranch || !targetBranch) {
+      return NextResponse.json(
+        { error: "缺少必要参数：source 和 target 分支" },
+        { status: 400 },
+      )
+    }
 
     // 获取用户信息
     const user = await prisma.user.findUnique({
@@ -94,15 +86,15 @@ export async function GET(
       } catch (error) {
         console.error("仓库克隆失败:", error)
         return NextResponse.json(
-          { error: "仓库克隆失败，无法获取分支列表" },
+          { error: "仓库克隆失败，无法获取分支差异" },
           { status: 500 },
         )
       }
     }
 
-    // 获取真实的分支信息
+    // 获取分支差异
     try {
-      const branches = await getRepositoryBranchesWithCommits(localPath)
+      const diff = await getBranchDiff(localPath, sourceBranch, targetBranch)
 
       return NextResponse.json({
         repository: {
@@ -110,75 +102,29 @@ export async function GET(
           name: repository.name,
           url: repository.url,
           provider: repository.provider,
-          defaultBranch: repository.defaultBranch,
-          isCloned,
-          localPath,
         },
-        branches,
+        sourceBranch,
+        targetBranch,
+        diff: {
+          stats: diff.diffStat,
+          files: diff.files,
+        },
       })
     } catch (error) {
-      console.error("获取分支列表失败:", error)
-      return NextResponse.json({ error: "获取分支列表失败" }, { status: 500 })
-    }
-  } catch (error) {
-    console.error("获取仓库分支失败:", error)
-    return NextResponse.json({ error: "获取仓库分支失败" }, { status: 500 })
-  }
-}
-
-// 同步仓库分支信息
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
-
-    const repositoryId = params.id
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证权限
-    const repository = await prisma.repository.findFirst({
-      where: {
-        id: repositoryId,
-        project: {
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
-        },
-      },
-    })
-
-    if (!repository) {
+      console.error("获取分支差异失败:", error)
       return NextResponse.json(
-        { error: "仓库不存在或无权限访问" },
-        { status: 404 },
+        { 
+          error: "获取分支差异失败", 
+          details: error instanceof Error ? error.message : String(error) 
+        },
+        { status: 500 },
       )
     }
-
-    // 更新同步时间
-    await prisma.repository.update({
-      where: { id: repositoryId },
-      data: {
-        lastSyncAt: new Date(),
-      },
-    })
-
-    return NextResponse.json({ message: "分支信息同步完成" })
   } catch (error) {
-    console.error("同步仓库分支失败:", error)
-    return NextResponse.json({ error: "同步仓库分支失败" }, { status: 500 })
+    console.error("获取仓库分支差异失败:", error)
+    return NextResponse.json(
+      { error: "获取仓库分支差异失败" },
+      { status: 500 },
+    )
   }
 }
