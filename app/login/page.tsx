@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useRouter } from "next/navigation"
+import { signIn } from "next-auth/react"
 import { AlertTriangle, Github, Gitlab } from "lucide-react"
 
 export default function LoginPage() {
@@ -15,7 +16,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // 开发环境直接登录
+  // OAuth 登录
+  const handleOAuthLogin = async (provider: string) => {
+    try {
+      await signIn(provider, { callbackUrl: "/main" })
+    } catch (error) {
+      setError(`${provider} 登录失败`)
+    }
+  }
   const handleDevLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email) return
@@ -89,11 +97,19 @@ export default function LoginPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" disabled>
+            <Button 
+              variant="outline" 
+              onClick={() => handleOAuthLogin("github")}
+              className="w-full"
+            >
               <Github className="h-4 w-4 mr-2" />
               GitHub
             </Button>
-            <Button variant="outline" disabled>
+            <Button 
+              variant="outline" 
+              onClick={() => handleOAuthLogin("gitlab")}
+              className="w-full"
+            >
               <Gitlab className="h-4 w-4 mr-2" />
               GitLab
             </Button>

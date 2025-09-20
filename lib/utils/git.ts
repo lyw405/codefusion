@@ -86,7 +86,9 @@ export async function getRepositoryBranches(
         // 移除 origin/ 前缀
         return trimmed.replace(/^origin\//, "")
       })
-      .filter((branch): branch is string => branch !== null && branch !== "HEAD")
+      .filter(
+        (branch): branch is string => branch !== null && branch !== "HEAD",
+      )
   } catch (error) {
     console.error("获取分支列表失败:", error)
     throw new Error("获取分支列表失败")
@@ -96,33 +98,37 @@ export async function getRepositoryBranches(
 // 获取仓库分支列表（带提交信息）
 export async function getRepositoryBranchesWithCommits(
   localPath: string,
-): Promise<Array<{
-  name: string
-  fullName: string
-  commit: {
-    hash: string
-    shortHash: string
-    message: string
-    author: string
-    date: string
-  }
-  isDefault: boolean
-}>> {
+): Promise<
+  Array<{
+    name: string
+    fullName: string
+    commit: {
+      hash: string
+      shortHash: string
+      message: string
+      author: string
+      date: string
+    }
+    isDefault: boolean
+  }>
+> {
   try {
     // 先获取分支列表
     const branchNames = await getRepositoryBranches(localPath)
-    
+
     // 获取默认分支
     const { stdout: defaultBranch } = await execAsync(
       "git symbolic-ref refs/remotes/origin/HEAD",
-      { cwd: localPath }
+      { cwd: localPath },
     ).catch(() => ({ stdout: "refs/remotes/origin/main" }))
-    
-    const defaultBranchName = defaultBranch.trim().replace("refs/remotes/origin/", "")
-    
+
+    const defaultBranchName = defaultBranch
+      .trim()
+      .replace("refs/remotes/origin/", "")
+
     // 并发获取所有分支的提交信息
     const branches = await Promise.all(
-      branchNames.map(async (branchName) => {
+      branchNames.map(async branchName => {
         try {
           const commitInfo = await getBranchCommitInfo(localPath, branchName)
           return {
@@ -146,9 +152,9 @@ export async function getRepositoryBranchesWithCommits(
             isDefault: branchName === defaultBranchName,
           }
         }
-      })
+      }),
     )
-    
+
     return branches
   } catch (error) {
     console.error("获取分支列表失败:", error)
@@ -237,12 +243,18 @@ export async function getBranchCommitInfo(
   try {
     // 先 fetch 获取最新信息
     await execAsync("git fetch origin", { cwd: localPath })
-    
+
     const [hash, message, author, date] = await Promise.all([
       execAsync(`git rev-parse origin/${branch}`, { cwd: localPath }),
-      execAsync(`git log -1 --pretty=format:%s origin/${branch}`, { cwd: localPath }),
-      execAsync(`git log -1 --pretty=format:%an origin/${branch}`, { cwd: localPath }),
-      execAsync(`git log -1 --pretty=format:%ai origin/${branch}`, { cwd: localPath }),
+      execAsync(`git log -1 --pretty=format:%s origin/${branch}`, {
+        cwd: localPath,
+      }),
+      execAsync(`git log -1 --pretty=format:%an origin/${branch}`, {
+        cwd: localPath,
+      }),
+      execAsync(`git log -1 --pretty=format:%ai origin/${branch}`, {
+        cwd: localPath,
+      }),
     ])
 
     const fullHash = hash.stdout.trim()
@@ -305,31 +317,37 @@ export async function getBranchDiff(
     // 确保两个分支都存在
     await checkoutBranch(localPath, sourceBranch)
     await checkoutBranch(localPath, targetBranch)
-    
+
     // 获取差异统计
     const { stdout: statOutput } = await execAsync(
       `git diff --stat ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath }
+      { cwd: localPath },
     )
-    
+
     // 解析统计信息
     const diffStat = parseDiffStat(statOutput)
-    
+
     // 获取详细的文件差异
     const { stdout: diffOutput } = await execAsync(
       `git diff --name-status ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath }
+      { cwd: localPath },
     )
-    
+
     // 获取每个文件的详细 patch
     const { stdout: patchOutput } = await execAsync(
       `git diff ${targetBranch}..${sourceBranch}`,
-      { cwd: localPath }
+      { cwd: localPath },
     )
-    
+
     // 解析文件变更
-    const files = await parseFileDiff(diffOutput, patchOutput, localPath, sourceBranch, targetBranch)
-    
+    const files = await parseFileDiff(
+      diffOutput,
+      patchOutput,
+      localPath,
+      sourceBranch,
+      targetBranch,
+    )
+
     return {
       diffStat,
       files,
@@ -337,6 +355,38 @@ export async function getBranchDiff(
   } catch (error) {
     console.error("获取分支差异失败:", error)
     throw new Error(`获取分支差异失败: ${error}`)
+  }
+}
+
+// 获取两个分支间的差异统计信息（快速版本）
+export async function getBranchDiffStats(
+  localPath: string,
+  sourceBranch: string,
+  targetBranch: string,
+): Promise<{
+  filesChanged: number
+  insertions: number
+  deletions: number
+}> {
+  try {
+    // 确保本地有最新信息
+    await execAsync("git fetch origin", { cwd: localPath })
+
+    // 获取差异统计
+    const { stdout: statOutput } = await execAsync(
+      `git diff --stat origin/${targetBranch}..origin/${sourceBranch}`,
+      { cwd: localPath },
+    )
+
+    // 解析统计信息
+    return parseDiffStat(statOutput)
+  } catch (error) {
+    console.error("获取分支差异统计失败:", error)
+    return {
+      filesChanged: 0,
+      insertions: 0,
+      deletions: 0,
+    }
   }
 }
 
@@ -348,12 +398,12 @@ function parseDiffStat(statOutput: string): {
 } {
   const lines = statOutput.trim().split("\n")
   const lastLine = lines[lines.length - 1]
-  
+
   // 格式类似: " 5 files changed, 120 insertions(+), 45 deletions(-)"
   const match = lastLine.match(
-    /(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/
+    /(\d+)\s+files?\s+changed(?:,\s+(\d+)\s+insertions?\(\+\))?(?:,\s+(\d+)\s+deletions?\(-\))?/,
   )
-  
+
   if (match) {
     return {
       filesChanged: parseInt(match[1]) || 0,
@@ -361,7 +411,7 @@ function parseDiffStat(statOutput: string): {
       deletions: parseInt(match[3]) || 0,
     }
   }
-  
+
   return {
     filesChanged: 0,
     insertions: 0,
@@ -376,13 +426,15 @@ async function parseFileDiff(
   localPath: string,
   sourceBranch: string,
   targetBranch: string,
-): Promise<Array<{
-  filename: string
-  status: "added" | "modified" | "removed" | "renamed"
-  additions: number
-  deletions: number
-  patch: string
-}>> {
+): Promise<
+  Array<{
+    filename: string
+    status: "added" | "modified" | "removed" | "renamed"
+    additions: number
+    deletions: number
+    patch: string
+  }>
+> {
   const files: Array<{
     filename: string
     status: "added" | "modified" | "removed" | "renamed"
@@ -390,17 +442,20 @@ async function parseFileDiff(
     deletions: number
     patch: string
   }> = []
-  
+
   // 解析 --name-status 输出
-  const lines = nameStatusOutput.trim().split("\n").filter(line => line.trim())
-  
+  const lines = nameStatusOutput
+    .trim()
+    .split("\n")
+    .filter(line => line.trim())
+
   for (const line of lines) {
     const parts = line.split("\t")
     if (parts.length < 2) continue
-    
+
     const statusCode = parts[0]
     const filename = parts[1]
-    
+
     // 转换状态码
     let status: "added" | "modified" | "removed" | "renamed"
     if (statusCode === "A") {
@@ -414,21 +469,21 @@ async function parseFileDiff(
     } else {
       status = "modified"
     }
-    
+
     // 获取单个文件的统计信息
     try {
       const { stdout: fileStats } = await execAsync(
         `git diff --numstat ${targetBranch}..${sourceBranch} -- "${filename}"`,
-        { cwd: localPath }
+        { cwd: localPath },
       )
-      
+
       const [addStr, delStr] = fileStats.trim().split("\t")
       const additions = addStr === "-" ? 0 : parseInt(addStr) || 0
       const deletions = delStr === "-" ? 0 : parseInt(delStr) || 0
-      
+
       // 提取该文件的 patch
       const filePatch = extractFilePatch(patchOutput, filename)
-      
+
       files.push({
         filename,
         status,
@@ -448,7 +503,7 @@ async function parseFileDiff(
       })
     }
   }
-  
+
   return files
 }
 
@@ -458,10 +513,10 @@ function extractFilePatch(fullPatch: string, filename: string): string {
   const patches: string[] = []
   let inTargetFile = false
   let currentFilename = ""
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    
+
     // 检查是否是文件头
     if (line.startsWith("diff --git")) {
       // 提取文件名
@@ -471,16 +526,16 @@ function extractFilePatch(fullPatch: string, filename: string): string {
         inTargetFile = currentFilename === filename
       }
     }
-    
+
     if (inTargetFile) {
       patches.push(line)
-      
+
       // 如果下一行是新文件的开始，停止收集
       if (i + 1 < lines.length && lines[i + 1].startsWith("diff --git")) {
         break
       }
     }
   }
-  
+
   return patches.join("\n")
 }

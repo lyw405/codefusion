@@ -42,6 +42,8 @@ export default function NewPRPage() {
   const [selectedLabels, setSelectedLabels] = useState<string[]>([])
   const [hasAutoFilled, setHasAutoFilled] = useState(false)
   const [activeTab, setActiveTab] = useState("details")
+  const [isCreating, setIsCreating] = useState(false)
+  const [isCreatingDraft, setIsCreatingDraft] = useState(false)
 
   // 使用真实的数据 hook
   const {
@@ -191,15 +193,86 @@ ${sourceCommit.message}
     { name: "security", color: "bg-orange-500", description: "安全相关" }
   ]
 
-  const handleCreatePR = () => {
-    console.log("创建PR:", {
-      title,
-      description,
-      sourceBranch,
-      targetBranch,
-      reviewers: selectedReviewers,
-      labels: selectedLabels
-    })
+  const handleCreatePR = async () => {
+    try {
+      setIsCreating(true)
+      
+      const prData = {
+        title,
+        description,
+        sourceBranch,
+        targetBranch,
+        repositoryId: selectedRepository,
+        reviewers: selectedReviewers,
+        labels: selectedLabels,
+        isDraft: false, // 或者根据用户选择
+      }
+      
+      const response = await fetch('/api/pull-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(prData),
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'PR创建失败')
+      }
+      
+      const result = await response.json()
+      console.log('PR创建成功:', result.pullRequest)
+      
+      // 导航到PR详情页面
+      window.location.href = `/main/code-review/${result.pullRequest.id}`
+    } catch (error) {
+      console.error('创建PR失败:', error)
+      alert(error instanceof Error ? error.message : '创建PR失败')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+  
+  const handleCreateDraftPR = async () => {
+    try {
+      setIsCreatingDraft(true)
+      
+      const prData = {
+        title,
+        description,
+        sourceBranch,
+        targetBranch,
+        repositoryId: selectedRepository,
+        reviewers: selectedReviewers,
+        labels: selectedLabels,
+        isDraft: true,
+      }
+      
+      const response = await fetch('/api/pull-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(prData),
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || '草稿PR创建失败')
+      }
+      
+      const result = await response.json()
+      console.log('草稿PR创建成功:', result.pullRequest)
+      
+      // 导航到PR详情页面
+      window.location.href = `/main/code-review/${result.pullRequest.id}`
+    } catch (error) {
+      console.error('创建草稿PR失败:', error)
+      alert(error instanceof Error ? error.message : '创建草稿PR失败')
+    } finally {
+      setIsCreatingDraft(false)
+    }
   }
 
   const toggleReviewer = (reviewerId: string) => {
@@ -818,16 +891,31 @@ ${sourceCommit.message}
             <div className="flex items-center justify-end gap-3">
               <Button 
                 variant="outline"
-                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
+                onClick={handleCreateDraftPR}
+                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
               >
-                Create draft pull request
+                {isCreatingDraft ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    创建中...
+                  </>
+                ) : (
+                  'Create draft pull request'
+                )}
               </Button>
               <Button 
                 onClick={handleCreatePR}
-                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch}
+                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
                 className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
               >
-                Create pull request
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    创建中...
+                  </>
+                ) : (
+                  'Create pull request'
+                )}
               </Button>
             </div>
           </div>

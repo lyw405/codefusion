@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { 
   GitPullRequest, 
   CheckCircle,
@@ -25,120 +26,16 @@ import {
   MessageCircle,
   Check,
   Eye,
-  Clock
+  Clock,
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react"
 import { getStatusColor, getPriorityColor } from "./utils/status"
 import { formatTime } from "./utils/common"
+import { usePRs } from "@/hooks/usePullRequests"
 
-// 模拟数据
-const mockPRs = [
-  {
-    id: "PR-001",
-    title: "添加用户认证功能",
-    description: "实现基于JWT的用户认证系统，包括登录、注册、密码重置等功能",
-    author: {
-      name: "张三",
-      avatar: "https://github.com/shadcn.png",
-      email: "zhangsan@example.com"
-    },
-    status: "open",
-    priority: "high",
-    createdAt: "2024-01-15T10:30:00Z",
-    updatedAt: "2024-01-16T14:20:00Z",
-    branch: "feature/user-auth",
-    baseBranch: "main",
-    commits: 12,
-    additions: 450,
-    deletions: 120,
-    changedFiles: 8,
-    reviewers: [
-      { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" },
-      { name: "王五", avatar: "https://github.com/shadcn.png", status: "pending" }
-    ],
-    labels: ["feature", "auth", "backend"],
-    assignees: ["李四"],
-    comments: 8,
-    approvals: 1,
-    conflicts: false,
-    checks: {
-      status: "success",
-      tests: "passed",
-      linting: "passed",
-      build: "passed"
-    }
-  },
-  {
-    id: "PR-002",
-    title: "优化数据库查询性能",
-    description: "重构数据库查询逻辑，添加索引优化，提升查询性能30%",
-    author: {
-      name: "李四",
-      avatar: "https://github.com/shadcn.png",
-      email: "lisi@example.com"
-    },
-    status: "open",
-    priority: "medium",
-    createdAt: "2024-01-14T16:45:00Z",
-    updatedAt: "2024-01-16T09:15:00Z",
-    branch: "feature/db-optimization",
-    baseBranch: "main",
-    commits: 6,
-    additions: 280,
-    deletions: 95,
-    changedFiles: 5,
-    reviewers: [
-      { name: "张三", avatar: "https://github.com/shadcn.png", status: "changes_requested" },
-      { name: "王五", avatar: "https://github.com/shadcn.png", status: "approved" }
-    ],
-    labels: ["performance", "database", "optimization"],
-    assignees: ["张三"],
-    comments: 12,
-    approvals: 1,
-    conflicts: false,
-    checks: {
-      status: "success",
-      tests: "passed",
-      linting: "passed",
-      build: "passed"
-    }
-  },
-  {
-    id: "PR-003",
-    title: "修复登录页面样式问题",
-    description: "修复移动端登录页面样式错乱问题，优化响应式布局",
-    author: {
-      name: "王五",
-      avatar: "https://github.com/shadcn.png",
-      email: "wangwu@example.com"
-    },
-    status: "open",
-    priority: "low",
-    createdAt: "2024-01-13T11:20:00Z",
-    updatedAt: "2024-01-15T17:30:00Z",
-    branch: "fix/login-styles",
-    baseBranch: "main",
-    commits: 3,
-    additions: 120,
-    deletions: 45,
-    changedFiles: 3,
-    reviewers: [
-      { name: "张三", avatar: "https://github.com/shadcn.png", status: "approved" },
-      { name: "李四", avatar: "https://github.com/shadcn.png", status: "approved" }
-    ],
-    labels: ["bugfix", "frontend", "ui"],
-    assignees: [],
-    comments: 3,
-    approvals: 2,
-    conflicts: false,
-    checks: {
-      status: "success",
-      tests: "passed",
-      linting: "passed",
-      build: "passed"
-    }
-  }
-]
-
+// 暂时保留的模拟 MR 数据
 const mockMRs = [
   {
     id: "MR-001",
@@ -166,6 +63,25 @@ const mockMRs = [
 
 export default function CodeReviewPage() {
   const [selectedTab, setSelectedTab] = useState("prs")
+  const [statusFilter, setStatusFilter] = useState<"OPEN" | "CLOSED" | "MERGED" | undefined>("OPEN")
+  
+  const { pullRequests, loading, error, pagination, refreshPRs } = usePRs({
+    status: statusFilter,
+    limit: 20,
+  })
+  
+  // 统计数据
+  const openPRs = pullRequests.filter(pr => pr.status === "OPEN")
+  const approvedPRs = pullRequests.filter(pr => 
+    pr.reviewers.some(r => r.status === "APPROVED")
+  )
+  const changesRequestedPRs = pullRequests.filter(pr => 
+    pr.reviewers.some(r => r.status === "REJECTED")
+  )
+  
+  const handleStatusFilterChange = (status: "OPEN" | "CLOSED" | "MERGED" | "ALL") => {
+    setStatusFilter(status === "ALL" ? undefined : status)
+  }
 
 
 
@@ -206,7 +122,7 @@ export default function CodeReviewPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold">{mockPRs.length}</p>
+                <p className="text-2xl font-bold">{openPRs.length}</p>
                 <p className="text-sm text-muted-foreground">待审查 PR</p>
               </div>
               <GitPullRequest className="h-8 w-8 text-blue-500" />
@@ -217,7 +133,7 @@ export default function CodeReviewPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-green-600">8</p>
+                <p className="text-2xl font-bold text-green-600">{approvedPRs.length}</p>
                 <p className="text-sm text-muted-foreground">已批准</p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-500" />
@@ -228,7 +144,7 @@ export default function CodeReviewPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-yellow-600">3</p>
+                <p className="text-2xl font-bold text-yellow-600">{changesRequestedPRs.length}</p>
                 <p className="text-sm text-muted-foreground">需修改</p>
               </div>
               <XCircle className="h-8 w-8 text-yellow-500" />
@@ -239,8 +155,8 @@ export default function CodeReviewPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold text-purple-600">2.5h</p>
-                <p className="text-sm text-muted-foreground">平均审查时长</p>
+                <p className="text-2xl font-bold text-purple-600">{pullRequests.length}</p>
+                <p className="text-sm text-muted-foreground">总数</p>
               </div>
               <Clock className="h-8 w-8 text-purple-500" />
             </div>
@@ -250,191 +166,215 @@ export default function CodeReviewPage() {
 
       {/* 主要内容区域 */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-1">
           <TabsTrigger value="prs" className="flex items-center gap-2">
             <GitPullRequest className="h-4 w-4" />
-            Pull Requests ({mockPRs.length})
-          </TabsTrigger>
-          <TabsTrigger value="mrs" className="flex items-center gap-2">
-            <GitBranch className="h-4 w-4" />
-            Merge Requests ({mockMRs.length})
+            Pull Requests ({pullRequests.length})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="prs" className="space-y-4">
-          {/* PR 列表 */}
-          <div className="space-y-4">
-            {mockPRs.map((pr) => (
-              <Link key={pr.id} href={`/main/code-review/${pr.id}`}>
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 space-y-4">
-                      {/* PR 标题和状态 */}
-                      <div className="flex items-start gap-3">
-                        <div className={`w-3 h-3 rounded-full mt-2 ${getStatusColor(pr.status)}`} />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold hover:text-primary transition-colors">
-                              {pr.title}
-                            </h3>
-                            <Badge className={getPriorityColor(pr.priority)}>
-                              {pr.priority === "high" ? "高优先级" : 
-                               pr.priority === "medium" ? "中优先级" : "低优先级"}
-                            </Badge>
-                            {pr.conflicts && (
-                              <Badge variant="destructive">冲突</Badge>
-                            )}
-                          </div>
-                          <p className="text-muted-foreground text-sm mb-3">
-                            {pr.description}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* PR 元信息 */}
-                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={pr.author.avatar} />
-                            <AvatarFallback>{pr.author.name[0]}</AvatarFallback>
-                          </Avatar>
-                          <span>{pr.author.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <GitBranch className="h-4 w-4" />
-                          <span>{pr.branch} → {pr.baseBranch}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <GitCommit className="h-4 w-4" />
-                          <span>{pr.commits} commits</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <FileText className="h-4 w-4" />
-                          <span>{pr.changedFiles} files</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Code className="h-4 w-4" />
-                          <span>+{pr.additions} -{pr.deletions}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>{formatTime(pr.createdAt)}</span>
-                        </div>
-                      </div>
-
-                      {/* 标签 */}
-                      <div className="flex items-center gap-2">
-                        {pr.labels.map((label, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
-                            {label}
-                          </Badge>
-                        ))}
-                      </div>
-
-                      {/* 审查者状态 */}
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">审查者:</span>
-                          {pr.reviewers.map((reviewer, index) => (
-                            <div key={index} className="flex items-center gap-1">
-                              <Avatar className="h-6 w-6">
-                                <AvatarImage src={reviewer.avatar} />
-                                <AvatarFallback>{reviewer.name[0]}</AvatarFallback>
-                              </Avatar>
-                              <div className={`w-2 h-2 rounded-full ${
-                                reviewer.status === "approved" ? "bg-green-500" :
-                                reviewer.status === "changes_requested" ? "bg-red-500" : "bg-yellow-500"
-                              }`} />
+          {/* 筛选器 */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Button 
+                variant={statusFilter === undefined ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleStatusFilterChange("ALL")}
+              >
+                全部
+              </Button>
+              <Button 
+                variant={statusFilter === "OPEN" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleStatusFilterChange("OPEN")}
+              >
+                开放 ({openPRs.length})
+              </Button>
+              <Button 
+                variant={statusFilter === "CLOSED" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleStatusFilterChange("CLOSED")}
+              >
+                已关闭
+              </Button>
+              <Button 
+                variant={statusFilter === "MERGED" ? "default" : "outline"}
+                size="sm"
+                onClick={() => handleStatusFilterChange("MERGED")}
+              >
+                已合并
+              </Button>
+            </div>
+            
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={refreshPRs}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              刷新
+            </Button>
+          </div>
+          
+          {/* 加载状态 */}
+          {loading ? (
+            <div className="text-center py-20">
+              <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-blue-500" />
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                加载PR列表...
+              </p>
+            </div>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {error}
+              </AlertDescription>
+            </Alert>
+          ) : pullRequests.length === 0 ? (
+            <div className="text-center py-20">
+              <GitPullRequest className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                暂无相关的 Pull Request
+              </p>
+              <Button asChild>
+                <Link href="/main/code-review/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  创建第一个 PR
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            /* PR 列表 */
+            <div className="space-y-4">
+              {pullRequests.map((pr) => (
+                <Link key={pr.id} href={`/main/code-review/${pr.id}`}>
+                  <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 space-y-4">
+                          {/* PR 标题和状态 */}
+                          <div className="flex items-start gap-3">
+                            <div className={`w-3 h-3 rounded-full mt-2 ${
+                              pr.status === "OPEN" ? "bg-green-500" :
+                              pr.status === "MERGED" ? "bg-purple-500" : "bg-red-500"
+                            }`} />
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-lg font-semibold hover:text-primary transition-colors">
+                                  #{pr.number} {pr.title}
+                                </h3>
+                                <Badge variant={pr.isDraft ? "secondary" : "default"}>
+                                  {pr.isDraft ? "草稿" : 
+                                   pr.status === "OPEN" ? "开放" :
+                                   pr.status === "MERGED" ? "已合并" : "已关闭"}
+                                </Badge>
+                              </div>
+                              {pr.description && (
+                                <p className="text-muted-foreground text-sm mb-3">
+                                  {pr.description.length > 100 
+                                    ? pr.description.substring(0, 100) + "..." 
+                                    : pr.description}
+                                </p>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <MessageCircle className="h-4 w-4" />
-                            <span>{pr.comments}</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <ThumbsUp className="h-4 w-4" />
-                            <span>{pr.approvals}</span>
+
+                          {/* PR 元信息 */}
+                          <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-5 w-5">
+                                {pr.author.image ? (
+                                  <AvatarImage src={pr.author.image} />
+                                ) : null}
+                                <AvatarFallback>{pr.author.name?.[0] || pr.author.email[0]}</AvatarFallback>
+                              </Avatar>
+                              <span>{pr.author.name || pr.author.email}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <GitBranch className="h-4 w-4" />
+                              <span>{pr.sourceBranch} → {pr.targetBranch}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <FileText className="h-4 w-4" />
+                              <span>{pr.filesChanged} files</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Code className="h-4 w-4" />
+                              <span>+{pr.additions} -{pr.deletions}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4" />
+                              <span>{formatTime(pr.createdAt)}</span>
+                            </div>
+                          </div>
+
+                          {/* 标签 */}
+                          {pr.labels.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              {pr.labels.map((label: string, index: number) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {label}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 审查者状态 */}
+                          <div className="flex items-center gap-4">
+                            {pr.reviewers.length > 0 && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">审查者:</span>
+                                {pr.reviewers.map((reviewer: any, index: number) => (
+                                  <div key={index} className="flex items-center gap-1">
+                                    <Avatar className="h-6 w-6">
+                                      {reviewer.image ? (
+                                        <AvatarImage src={reviewer.image} />
+                                      ) : null}
+                                      <AvatarFallback>{reviewer.name?.[0] || reviewer.email[0]}</AvatarFallback>
+                                    </Avatar>
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      reviewer.status === "APPROVED" ? "bg-green-500" :
+                                      reviewer.status === "REJECTED" ? "bg-red-500" : 
+                                      reviewer.status === "COMMENTED" ? "bg-blue-500" : "bg-yellow-500"
+                                    }`} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <MessageCircle className="h-4 w-4" />
+                                <span>{pr.commentCount}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <ThumbsUp className="h-4 w-4" />
+                                <span>{pr.reviewers.filter(r => r.status === "APPROVED").length}</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
 
-                    {/* 右侧操作按钮 */}
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        查看
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              </Link>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="mrs" className="space-y-4">
-          {/* MR 列表 */}
-          <div className="space-y-4">
-            {mockMRs.map((mr) => (
-              <Link key={mr.id} href={`/main/code-review/mr/${mr.id}`}>
-                <Card className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold">{mr.title}</h3>
-                        <Badge variant={mr.status === "ready" ? "default" : "secondary"}>
-                          {mr.status === "ready" ? "可合并" : "待处理"}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-6 text-sm text-muted-foreground mb-3">
-                        <div className="flex items-center gap-1">
-                          <GitBranch className="h-4 w-4" />
-                          <span>{mr.sourceBranch} → {mr.targetBranch}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          <span>{mr.author}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <ThumbsUp className="h-4 w-4" />
-                          <span>{mr.approvals} 批准</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>{formatTime(mr.createdAt)}</span>
+                        {/* 右侧操作按钮 */}
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm">
+                            <Eye className="h-4 w-4 mr-2" />
+                            查看
+                          </Button>
                         </div>
                       </div>
-                      {mr.conflicts && (
-                        <Badge variant="destructive" className="mb-3">存在冲突</Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
-                        <Eye className="h-4 w-4 mr-2" />
-                        查看
-                      </Button>
-                      {mr.status === "ready" && (
-                        <Button size="sm">
-                          <Check className="h-4 w-4 mr-2" />
-                          合并
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              </Link>
-            ))}
-          </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
