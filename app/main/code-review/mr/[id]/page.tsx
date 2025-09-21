@@ -18,6 +18,8 @@ import { ReviewerList } from "../../components/common/ReviewerList"
 import { CheckStatus } from "../../components/common/CheckStatus"
 import { CommentSection } from "../../components/CommentSection"
 import { useState } from "react"
+import { CodeDiffViewer } from "../../components/CodeDiffViewer"
+import { FileComment } from "../../components/FileCommentSection"
 
 // 评论数据类型
 interface Comment {
@@ -130,6 +132,7 @@ const mockMRDetail = {
 
 export default function MRDetailPage({ params }: { params: { id: string } }) {
   const [comments, setComments] = useState(mockComments)
+  const [fileComments, setFileComments] = useState<FileComment[]>([])
 
   // 评论相关处理函数
   const handleAddComment = (content: string, type: "suggestion" | "review" | "reply") => {

@@ -8,6 +8,9 @@ import {
   ApiError,
 } from "@/lib/api"
 import { z } from "zod"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { NextResponse } from "next/server"
 
 // 更新PR的验证模式
 const updatePRSchema = z.object({
@@ -107,253 +110,209 @@ export const GET = handleApiError(
 )
 
 // 更新PR
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const PUT = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: prId } = params
+      const body = await request.json()
+      const validatedData = updatePRSchema.parse(body)
 
-    const { id: prId } = params
-    const body = await request.json()
-    const validatedData = updatePRSchema.parse(body)
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证PR是否存在以及用户权限
-    const existingPR = await prisma.pullRequest.findFirst({
-      where: {
-        id: prId,
-        OR: [
-          // PR作者可以编辑
-          { authorId: user.id },
-          // 项目拥有者或管理员可以编辑
-          {
-            project: {
-              OR: [
-                { ownerId: user.id },
-                {
-                  members: {
-                    some: {
-                      userId: user.id,
-                      role: { in: ["OWNER", "ADMIN"] },
+      // 验证PR是否存在以及用户权限
+      const existingPR = await prisma.pullRequest.findFirst({
+        where: {
+          id: prId,
+          OR: [
+            // PR作者可以编辑
+            { authorId: user.id },
+            // 项目拥有者或管理员可以编辑
+            {
+              project: {
+                OR: [
+                  { ownerId: user.id },
+                  {
+                    members: {
+                      some: {
+                        userId: user.id,
+                        role: { in: ["OWNER", "ADMIN"] },
+                      },
                     },
                   },
-                },
-              ],
+                ],
+              },
             },
-          },
-        ],
-      },
-      include: {
-        project: true,
-      },
-    })
-
-    if (!existingPR) {
-      return NextResponse.json(
-        { error: "PR不存在或无权限修改" },
-        { status: 404 },
-      )
-    }
-
-    // 如果要分配给某人，验证该用户是否是项目成员
-    if (validatedData.assigneeId) {
-      const isMember = await prisma.projectMember.findFirst({
-        where: {
-          projectId: existingPR.projectId,
-          userId: validatedData.assigneeId,
+          ],
+        },
+        include: {
+          project: true,
         },
       })
 
-      if (!isMember) {
-        return NextResponse.json(
-          { error: "被分配人不是项目成员" },
-          { status: 400 },
-        )
+      if (!existingPR) {
+        throw ApiError.notFound("PR不存在或无权限修改")
       }
-    }
 
-    // 构建更新数据
-    const updateData: any = {}
+      // 如果要分配给某人，验证该用户是否是项目成员
+      if (validatedData.assigneeId) {
+        const isMember = await prisma.projectMember.findFirst({
+          where: {
+            projectId: existingPR.projectId,
+            userId: validatedData.assigneeId,
+          },
+        })
 
-    if (validatedData.title !== undefined) {
-      updateData.title = validatedData.title
-    }
-
-    if (validatedData.description !== undefined) {
-      updateData.description = validatedData.description
-    }
-
-    if (validatedData.status !== undefined) {
-      updateData.status = validatedData.status
-      if (validatedData.status === "CLOSED") {
-        updateData.closedAt = new Date()
-      } else if (validatedData.status === "MERGED") {
-        updateData.mergedAt = new Date()
-        updateData.closedAt = new Date()
+        if (!isMember) {
+          throw ApiError.badRequest("被分配人不是项目成员")
+        }
       }
-    }
 
-    if (validatedData.assigneeId !== undefined) {
-      updateData.assigneeId = validatedData.assigneeId
-    }
+      // 构建更新数据
+      const updateData: any = {}
 
-    if (validatedData.labels !== undefined) {
-      updateData.labels =
-        validatedData.labels.length > 0
-          ? JSON.stringify(validatedData.labels)
-          : null
-    }
+      if (validatedData.title !== undefined) {
+        updateData.title = validatedData.title
+      }
 
-    // 更新PR
-    const updatedPR = await prisma.pullRequest.update({
-      where: { id: prId },
-      data: updateData,
-      include: {
-        author: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        assignee: {
-          select: { id: true, name: true, email: true, image: true },
-        },
-        reviewers: {
-          include: {
-            reviewer: {
-              select: { id: true, name: true, email: true, image: true },
+      if (validatedData.description !== undefined) {
+        updateData.description = validatedData.description
+      }
+
+      if (validatedData.status !== undefined) {
+        updateData.status = validatedData.status
+        if (validatedData.status === "CLOSED") {
+          updateData.closedAt = new Date()
+        } else if (validatedData.status === "MERGED") {
+          updateData.mergedAt = new Date()
+          updateData.closedAt = new Date()
+        }
+      }
+
+      if (validatedData.assigneeId !== undefined) {
+        updateData.assigneeId = validatedData.assigneeId
+      }
+
+      if (validatedData.labels !== undefined) {
+        updateData.labels =
+          validatedData.labels.length > 0
+            ? JSON.stringify(validatedData.labels)
+            : null
+      }
+
+      // 更新PR
+      const updatedPR = await prisma.pullRequest.update({
+        where: { id: prId },
+        data: updateData,
+        include: {
+          author: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          assignee: {
+            select: { id: true, name: true, email: true, image: true },
+          },
+          reviewers: {
+            include: {
+              reviewer: {
+                select: { id: true, name: true, email: true, image: true },
+              },
             },
           },
-        },
-        repository: {
-          select: { id: true, name: true, provider: true },
-        },
-        project: {
-          select: { id: true, name: true, slug: true },
-        },
-      },
-    })
-
-    // 记录活动
-    if (validatedData.status && validatedData.status !== existingPR.status) {
-      const statusMap = {
-        CLOSED: "关闭",
-        MERGED: "合并",
-        OPEN: "重新打开",
-      }
-
-      await prisma.projectActivity.create({
-        data: {
-          projectId: existingPR.projectId,
-          type: validatedData.status === "MERGED" ? "PR_MERGED" : "PR_CLOSED",
-          userId: user.id,
-          title: `${statusMap[validatedData.status]}了 PR #${existingPR.number}: ${existingPR.title}`,
-          metadata: JSON.stringify({
-            prId: existingPR.id,
-            prNumber: existingPR.number,
-            oldStatus: existingPR.status,
-            newStatus: validatedData.status,
-          }),
+          repository: {
+            select: { id: true, name: true, provider: true },
+          },
+          project: {
+            select: { id: true, name: true, slug: true },
+          },
         },
       })
-    }
 
-    // 格式化响应数据
-    const formattedPR = {
-      ...updatedPR,
-      labels: updatedPR.labels ? JSON.parse(updatedPR.labels) : [],
-      reviewers: updatedPR.reviewers.map(r => ({
-        ...r.reviewer,
-        status: r.status,
-        reviewedAt: r.reviewedAt,
-      })),
-    }
+      // 记录活动
+      if (validatedData.status && validatedData.status !== existingPR.status) {
+        const statusMap = {
+          CLOSED: "关闭",
+          MERGED: "合并",
+          OPEN: "重新打开",
+        }
 
-    return NextResponse.json({ pullRequest: formattedPR })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "数据验证失败", details: error.errors },
-        { status: 400 },
-      )
-    }
+        await prisma.projectActivity.create({
+          data: {
+            projectId: existingPR.projectId,
+            type: validatedData.status === "MERGED" ? "PR_MERGED" : "PR_CLOSED",
+            userId: user.id,
+            title: `${statusMap[validatedData.status]}了 PR #${existingPR.number}: ${existingPR.title}`,
+            metadata: JSON.stringify({
+              prId: existingPR.id,
+              prNumber: existingPR.number,
+              oldStatus: existingPR.status,
+              newStatus: validatedData.status,
+            }),
+          },
+        })
+      }
 
-    console.error("更新PR失败:", error)
-    return NextResponse.json({ error: "更新PR失败" }, { status: 500 })
-  }
-}
+      // 格式化响应数据
+      const formattedPR = {
+        ...updatedPR,
+        labels: updatedPR.labels ? JSON.parse(updatedPR.labels) : [],
+        reviewers: updatedPR.reviewers.map(r => ({
+          ...r.reviewer,
+          status: r.status,
+          reviewedAt: r.reviewedAt,
+        })),
+      }
+
+      return successResponse({ pullRequest: formattedPR })
+    },
+  ),
+)
 
 // 删除PR（只有作者和项目管理员可以删除）
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "未授权访问" }, { status: 401 })
-    }
+export const DELETE = handleApiError(
+  withAuth(
+    async (
+      user,
+      request: NextRequest,
+      { params }: { params: { id: string } },
+    ) => {
+      const { id: prId } = params
 
-    const { id: prId } = params
-
-    // 获取用户信息
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    })
-
-    if (!user) {
-      return NextResponse.json({ error: "用户不存在" }, { status: 404 })
-    }
-
-    // 验证PR是否存在以及用户权限
-    const existingPR = await prisma.pullRequest.findFirst({
-      where: {
-        id: prId,
-        OR: [
-          { authorId: user.id },
-          {
-            project: {
-              OR: [
-                { ownerId: user.id },
-                {
-                  members: {
-                    some: {
-                      userId: user.id,
-                      role: { in: ["OWNER", "ADMIN"] },
+      // 验证PR是否存在以及用户权限
+      const existingPR = await prisma.pullRequest.findFirst({
+        where: {
+          id: prId,
+          OR: [
+            { authorId: user.id },
+            {
+              project: {
+                OR: [
+                  { ownerId: user.id },
+                  {
+                    members: {
+                      some: {
+                        userId: user.id,
+                        role: { in: ["OWNER", "ADMIN"] },
+                      },
                     },
                   },
-                },
-              ],
+                ],
+              },
             },
-          },
-        ],
-      },
-    })
+          ],
+        },
+      })
 
-    if (!existingPR) {
-      return NextResponse.json(
-        { error: "PR不存在或无权限删除" },
-        { status: 404 },
-      )
-    }
+      if (!existingPR) {
+        throw ApiError.notFound("PR不存在或无权限删除")
+      }
 
-    // 删除PR（级联删除相关数据）
-    await prisma.pullRequest.delete({
-      where: { id: prId },
-    })
+      // 删除PR（级联删除相关数据）
+      await prisma.pullRequest.delete({
+        where: { id: prId },
+      })
 
-    return NextResponse.json({ message: "PR删除成功" })
-  } catch (error) {
-    console.error("删除PR失败:", error)
-    return NextResponse.json({ error: "删除PR失败" }, { status: 500 })
-  }
-}
+      return successResponse(null, "PR删除成功")
+    },
+  ),
+)

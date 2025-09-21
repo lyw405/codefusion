@@ -92,18 +92,27 @@ export default function MainPage() {
         <div className="absolute inset-0 bg-black/10" />
         {/* 动态背景粒子效果 */}
         <div className="absolute inset-0 overflow-hidden">
-          {[...Array(30)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-1 h-1 bg-white/30 rounded-full animate-pulse"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 3}s`,
-                animationDuration: `${3 + Math.random() * 4}s`
-              }}
-            />
-          ))}
+          {[...Array(30)].map((_, i) => {
+            // 使用索引生成固定的伪随机值，确保服务端和客户端一致
+            const seed = i * 1234567;
+            const pseudoRandom1 = ((seed * 9301 + 49297) % 233280) / 233280;
+            const pseudoRandom2 = (((seed + 1) * 9301 + 49297) % 233280) / 233280;
+            const pseudoRandom3 = (((seed + 2) * 9301 + 49297) % 233280) / 233280;
+            const pseudoRandom4 = (((seed + 3) * 9301 + 49297) % 233280) / 233280;
+            
+            return (
+              <div
+                key={i}
+                className="absolute w-1 h-1 bg-white/30 rounded-full animate-pulse"
+                style={{
+                  left: `${pseudoRandom1 * 100}%`,
+                  top: `${pseudoRandom2 * 100}%`,
+                  animationDelay: `${pseudoRandom3 * 3}s`,
+                  animationDuration: `${3 + pseudoRandom4 * 4}s`
+                }}
+              />
+            );
+          })}
         </div>
         {/* 装饰性几何图形 */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-16 translate-x-16 blur-2xl" />

@@ -370,8 +370,14 @@ model PRComment {
   authorId      String
   author        User        @relation("PRCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
   
+  // 回复关系
+  parentId   String?  // 父评论ID
+  parent     PRComment? @relation("PRCommentReplies", fields: [parentId], references: [id])
+  replies    PRComment[] @relation("PRCommentReplies")
+  
   @@index([pullRequestId])
   @@index([authorId])
+  @@index([parentId])
   @@index([createdAt])
   @@map("pr_comments")
 }

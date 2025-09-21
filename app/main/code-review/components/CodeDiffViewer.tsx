@@ -23,6 +23,7 @@ import { DiffFile } from "../types/diff"
 import { DiffParser } from "../utils/diffParser"
 import { getFileStatusIcon, getFileStatusColor, getFileStatusBadge } from "../utils/status"
 import { useFileDiff } from "../hooks/useFileDiff"
+import { FileCommentSection, FileComment } from "./FileCommentSection"
 
 // 组件props类型
 interface CodeDiffViewerProps {
@@ -33,6 +34,12 @@ interface CodeDiffViewerProps {
   selectedFile?: string
   showStats?: boolean
   className?: string
+  // 文件评论相关
+  fileComments?: FileComment[]
+  onAddFileComment?: (content: string, type: "SUGGESTION" | "REVIEW" | "GENERAL", filePath: string) => void
+  onReplyFileComment?: (parentId: string, content: string) => void
+  onReactFileComment?: (commentId: string, reaction: "thumbsUp" | "heart") => void
+  showFileComments?: boolean
 }
 
 export function CodeDiffViewer({
@@ -42,7 +49,13 @@ export function CodeDiffViewer({
   onFileSelect,
   selectedFile,
   showStats = true,
-  className = ""
+  className = "",
+  // 文件评论相关
+  fileComments = [],
+  onAddFileComment,
+  onReplyFileComment,
+  onReactFileComment,
+  showFileComments = true
 }: CodeDiffViewerProps) {
   // 默认展开所有文件
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set(files.map(file => file.filename)))
@@ -244,6 +257,19 @@ export function CodeDiffViewer({
                     <MonacoCodeDiff
                       fileDiff={DiffParser.parseFileDiff(file.filename, file.patch, file.status)}
                     />
+                    
+                    {/* File Comments */}
+                    {showFileComments && onAddFileComment && onReplyFileComment && onReactFileComment && (
+                      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                        <FileCommentSection
+                          filePath={file.filename}
+                          comments={fileComments}
+                          onAddComment={onAddFileComment}
+                          onReplyComment={onReplyFileComment}
+                          onReactComment={onReactFileComment}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
