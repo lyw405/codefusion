@@ -314,13 +314,12 @@ export async function getBranchDiff(
   }>
 }> {
   try {
-    // 确保两个分支都存在
-    await checkoutBranch(localPath, sourceBranch)
-    await checkoutBranch(localPath, targetBranch)
+    // 确保本地有最新信息，先fetch远程仓库
+    await execAsync("git fetch origin", { cwd: localPath })
 
     // 获取差异统计
     const { stdout: statOutput } = await execAsync(
-      `git diff --stat ${targetBranch}..${sourceBranch}`,
+      `git diff --stat origin/${targetBranch}..origin/${sourceBranch}`,
       { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
@@ -329,13 +328,13 @@ export async function getBranchDiff(
 
     // 获取详细的文件差异
     const { stdout: diffOutput } = await execAsync(
-      `git diff --name-status ${targetBranch}..${sourceBranch}`,
+      `git diff --name-status origin/${targetBranch}..origin/${sourceBranch}`,
       { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
     // 获取每个文件的详细 patch
     const { stdout: patchOutput } = await execAsync(
-      `git diff ${targetBranch}..${sourceBranch}`,
+      `git diff origin/${targetBranch}..origin/${sourceBranch}`,
       { cwd: localPath, maxBuffer: 10 * 1024 * 1024 }, // 10MB buffer
     )
 
@@ -369,7 +368,7 @@ export async function getBranchDiffStats(
   deletions: number
 }> {
   try {
-    // 确保本地有最新信息
+    // 确保本地有最新信息，先fetch远程仓库
     await execAsync("git fetch origin", { cwd: localPath })
 
     // 获取差异统计
@@ -538,4 +537,26 @@ function extractFilePatch(fullPatch: string, filename: string): string {
   }
 
   return patches.join("\n")
+}
+
+// 获取指定分支上文件的内容
+export async function getFileContent(
+  localPath: string,
+  branch: string,
+  filePath: string,
+): Promise<string> {
+  try {
+    // 使用 git show 命令获取指定分支上文件的内容
+    const { stdout } = await execAsync(`git show ${branch}:${filePath}`, {
+      cwd: localPath,
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    })
+
+    return stdout
+  } catch (error) {
+    console.error(`获取文件 ${filePath} 在分支 ${branch} 上的内容失败:`, error)
+    throw new Error(
+      `获取文件 ${filePath} 在分支 ${branch} 上的内容失败: ${error}`,
+    )
+  }
 }
