@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
-import { getBranchDiffStats } from "@/lib/utils/git"
+import { getBranchDiffStats, cloneRepository } from "@/lib/utils/git"
 import {
   successResponse,
   paginatedResponse,
@@ -15,6 +15,8 @@ import {
   ApiError,
 } from "@/lib/api"
 import { z } from "zod"
+import { codeReviewService } from "@/lib/ai/code-review-service"
+import { getAISystemUser } from "@/lib/ai/ai-user"
 
 // 创建PR的验证模式
 const createPRSchema = z.object({
@@ -181,12 +183,46 @@ export const POST = handleApiError(
     })
     const nextNumber = (lastPR?.number || 0) + 1
 
-    // 尝试获取差异统计信息
+    // 确保仓库已克隆并获取最新代码
+    let localPath = repository.localPath
+    let isCloned = repository.isCloned
+
+    // 如果仓库未克隆，先克隆
+    if (!isCloned || !localPath) {
+      try {
+        console.log(`开始克隆仓库: ${repository.name}`)
+        localPath = await cloneRepository(
+          repository,
+          user.id,
+          repository.project.slug,
+        )
+        isCloned = true
+
+        // 更新数据库中的克隆状态
+        await prisma.repository.update({
+          where: { id: data.repositoryId },
+          data: {
+            isCloned: true,
+            localPath,
+            lastSyncAt: new Date(),
+          },
+        })
+        console.log(`仓库克隆完成: ${localPath}`)
+      } catch (error) {
+        console.error("仓库克隆失败:", error)
+        throw ApiError.internal(
+          `仓库克隆失败: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
+    // 获取分支差异统计信息
     let diffStats = { filesChanged: 0, additions: 0, deletions: 0 }
     try {
-      if (repository.localPath) {
+      if (localPath) {
+        // 确保获取最新的远程代码
         const stats = await getBranchDiffStats(
-          repository.localPath,
+          localPath,
           data.sourceBranch,
           data.targetBranch,
         )
@@ -280,6 +316,67 @@ export const POST = handleApiError(
       })),
       commentCount: 0,
     }
+
+    // 异步触发AI代码审查（不阻塞响应）
+    setImmediate(async () => {
+      try {
+        // 获取AI系统用户
+        const aiUser = await getAISystemUser()
+
+        // 创建一个AI审查任务
+        const reviewTask = await prisma.projectActivity.create({
+          data: {
+            projectId: repository.projectId,
+            type: "CODE_REVIEW",
+            userId: aiUser.id,
+            title: `AI正在审查 PR #${nextNumber}: ${data.title}`,
+            description: "AI代码审查任务已启动",
+            metadata: JSON.stringify({
+              prId: pullRequest.id,
+              prNumber: nextNumber,
+              status: "pending",
+            }),
+          },
+        })
+
+        // 执行AI代码审查
+        const comments = []
+        for await (const comment of codeReviewService.analyzePR(
+          pullRequest.id,
+        )) {
+          comments.push(comment)
+
+          // 将AI审查评论添加到PR中
+          await prisma.pRComment.create({
+            data: {
+              content: comment.content,
+              type: comment.type,
+              filePath: comment.filePath || null,
+              lineNumber: comment.lineNumber || null,
+              authorId: aiUser.id,
+              pullRequestId: pullRequest.id,
+            },
+          })
+        }
+
+        // 更新审查任务状态
+        await prisma.projectActivity.update({
+          where: { id: reviewTask.id },
+          data: {
+            title: `AI已完成对 PR #${nextNumber}: ${data.title} 的审查`,
+            description: `AI代码审查完成，生成了${comments.length}条评论`,
+            metadata: JSON.stringify({
+              prId: pullRequest.id,
+              prNumber: nextNumber,
+              status: "completed",
+              commentCount: comments.length,
+            }),
+          },
+        })
+      } catch (error) {
+        console.error("AI代码审查失败:", error)
+      }
+    })
 
     return createdResponse(formattedPR, "Pull Request 创建成功")
   }),
