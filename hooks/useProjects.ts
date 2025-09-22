@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useSession } from "next-auth/react"
 
-export interface Project {
+interface Project {
   id: string
   name: string
   description?: string
@@ -50,7 +50,7 @@ export interface Project {
   updatedAt: string
 }
 
-export interface CreateProjectData {
+interface CreateProjectData {
   name: string
   description?: string
   slug: string
@@ -64,36 +64,12 @@ export interface CreateProjectData {
   visibility?: "PRIVATE" | "TEAM" | "PUBLIC"
 }
 
-export interface UpdateProjectData {
-  name?: string
-  description?: string
-  slug?: string
-  status?:
-    | "PLANNING"
-    | "DEVELOPMENT"
-    | "TESTING"
-    | "STAGING"
-    | "PRODUCTION"
-    | "ARCHIVED"
-  visibility?: "PRIVATE" | "TEAM" | "PUBLIC"
-}
-
-export interface ProjectFilters {
+interface ProjectFilters {
   search?: string
   status?: string
   visibility?: string
   page?: number
   limit?: number
-}
-
-export interface ProjectsResponse {
-  projects: Project[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
 }
 
 export function useProjects() {
@@ -111,8 +87,7 @@ export function useProjects() {
   // 获取项目列表
   const fetchProjects = useCallback(
     async (filters: ProjectFilters = {}) => {
-      // 开发环境：即使没有session也尝试获取数据
-      if (!session?.user?.email && process.env.NODE_ENV === "development") {
+      if (!session?.user?.email) {
         console.log("开发环境：尝试获取项目数据（无用户认证）")
       }
 
@@ -243,7 +218,7 @@ export function useProjects() {
 
   // 更新项目
   const updateProject = useCallback(
-    async (projectId: string, projectData: UpdateProjectData) => {
+    async (projectId: string, projectData: Partial<CreateProjectData>) => {
       if (!session?.user?.email) {
         setError("未授权访问")
         return null
@@ -308,16 +283,22 @@ export function useProjects() {
           throw new Error(errorData.error || "删除项目失败")
         }
 
+        // 验证统一API响应格式
         const data = await response.json()
-
-        // 适配统一API响应格式
-        if (data.success) {
-          // 从本地项目列表中移除
-          setProjects(prev => prev.filter(p => p.id !== projectId))
-          return true
-        } else {
+        if (data.success === false) {
           throw new Error(data.error || "删除项目失败")
         }
+
+        // 从本地状态中移除
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+
+        // 更新总数
+        setPagination(prev => ({
+          ...prev,
+          total: prev.total - 1,
+        }))
+
+        return true
       } catch (err) {
         setError(err instanceof Error ? err.message : "删除项目失败")
         return false
@@ -328,11 +309,12 @@ export function useProjects() {
     [session?.user?.email],
   )
 
-  // 初始化
+  // 初始化获取项目列表
   useEffect(() => {
-    // 开发环境：即使没有session也尝试获取数据
-    fetchProjects()
-  }, [fetchProjects])
+    if (session?.user?.email) {
+      fetchProjects()
+    }
+  }, [session?.user?.email, fetchProjects])
 
   return {
     projects,
@@ -340,8 +322,8 @@ export function useProjects() {
     error,
     pagination,
     fetchProjects,
-    fetchProject,
     createProject,
+    fetchProject,
     updateProject,
     deleteProject,
   }

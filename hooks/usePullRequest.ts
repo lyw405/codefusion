@@ -68,490 +68,475 @@ export interface AddReviewerData {
 
 export function usePullRequest(prId: string) {
   const [pullRequest, setPullRequest] = useState<PRDetailData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // 获取PR基本信息（不包含文件差异）
+  // 获取PR详情
   const fetchPR = useCallback(async () => {
-    if (!prId) return
+    console.log(`[usePullRequest] 开始获取PR详情，PR ID: ${prId}`)
+
+    if (!prId) {
+      const errorMsg = "PR ID不能为空"
+      console.error(`[usePullRequest] ${errorMsg}`)
+      setError(errorMsg)
+      setLoading(false)
+      return
+    }
 
     try {
       setLoading(true)
       setError(null)
 
-      console.log("usePullRequest: 请求PR详情", { prId })
+      // 获取PR基本信息
+      console.log(`[usePullRequest] 请求PR基本信息: /api/pull-requests/${prId}`)
+      const prResponse = await fetch(`/api/pull-requests/${prId}`)
+      console.log(`[usePullRequest] PR基本信息响应状态: ${prResponse.status}`)
 
-      const response = await fetch(`/api/pull-requests/${prId}`)
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "获取PR详情失败")
+      if (!prResponse.ok) {
+        const errorData = await prResponse.json().catch(() => ({}))
+        const errorMsg = errorData.error || "获取PR详情失败"
+        console.error(`[usePullRequest] 获取PR基本信息失败: ${errorMsg}`)
+        throw new Error(errorMsg)
       }
 
-      const data = await response.json()
-      console.log("usePullRequest: API响应数据", data)
+      const prData = await prResponse.json()
+      console.log(`[usePullRequest] PR基本信息响应数据:`, prData)
 
-      // 适配统一API响应格式 {success: true, data: {pullRequest: {...}}}
-      let prData: PullRequest
-      if (data.success && data.data) {
-        prData = data.data.pullRequest
+      // 适配统一API响应格式 {success: true, data: { pullRequest }}，兼容旧格式 { pullRequest }
+      let prDetail: any
+      if (prData.success && prData.data) {
+        prDetail = prData.data.pullRequest ?? prData.data
       } else {
         // 兼容旧格式
-        prData = data.pullRequest
+        prDetail = prData.pullRequest
       }
 
-      if (!prData) {
-        throw new Error("PR数据不存在")
+      if (!prDetail) {
+        const errorMsg = "PR数据格式错误"
+        console.error(`[usePullRequest] ${errorMsg}`)
+        throw new Error(errorMsg)
       }
 
       // 获取PR评论
-      const commentsResponse = await fetch(`/api/pull-requests/${prId}/comments`)
+      console.log(
+        `[usePullRequest] 请求PR评论: /api/pull-requests/${prId}/comments`,
+      )
+      const commentsResponse = await fetch(
+        `/api/pull-requests/${prId}/comments`,
+      )
+      console.log(`[usePullRequest] PR评论响应状态: ${commentsResponse.status}`)
+
       let comments: PRComment[] = []
-      
+
       if (commentsResponse.ok) {
         const commentsData = await commentsResponse.json()
-        if (commentsData.success && commentsData.data && commentsData.data.comments) {
+        console.log(`[usePullRequest] PR评论响应数据:`, commentsData)
+
+        if (
+          commentsData.success &&
+          commentsData.data &&
+          commentsData.data.comments
+        ) {
           comments = commentsData.data.comments
         }
       }
 
       // 构建PR详情数据（不包含文件差异，先让页面快速展示）
       const prDetailData: PRDetailData = {
-        ...prData,
+        ...prDetail,
         comments,
         files: [], // 文件差异将异步加载
         checks: {
           status: "success", // TODO: 从CI/CD系统获取
           tests: "passed",
-          linting: "passed", 
+          linting: "passed",
           build: "passed",
         },
         conflicts: false, // TODO: 从Git检查冲突状态
       }
 
+      console.log(`[usePullRequest] 构建PR详情数据完成:`, prDetailData)
       setPullRequest(prDetailData)
-      
+
       // 异步加载文件差异，不阻塞页面展示
-      fetchPRFiles(prData)
+      fetchPRFiles(prDetail)
     } catch (err) {
-      console.error("获取PR详情失败:", err)
+      console.error("[usePullRequest] 获取PR详情失败:", err)
       setError(err instanceof Error ? err.message : "获取PR详情失败")
       setPullRequest(null)
     } finally {
       setLoading(false)
+      console.log("[usePullRequest] 获取PR详情完成")
     }
   }, [prId])
 
   // 异步获取PR文件差异
-  const fetchPRFiles = useCallback(async (prData?: PullRequest): Promise<void> => {
-    try {
-      // 如果没有传入prData，使用当前的pullRequest
-      const targetPR = prData || pullRequest
-      if (!targetPR) {
-        console.warn("fetchPRFiles: 没有可用的PR数据")
-        return Promise.resolve()
-      }
-      
-      console.log("usePullRequest: 异步加载文件差异")
-      
-      const filesResponse = await fetch(`/api/repositories/${targetPR.repository.id}/diff?source=${targetPR.sourceBranch}&target=${targetPR.targetBranch}`)
-      
-      if (filesResponse.ok) {
-        const filesData = await filesResponse.json()
-        if (filesData.success && filesData.data && filesData.data.diff) {
-          const files: DiffFile[] = filesData.data.diff.files.map((file: any) => ({
-            filename: file.filename,
-            status: file.status,
-            additions: file.additions,
-            deletions: file.deletions,
-            patch: file.patch,
-            comments: 0, // TODO: 从评论中计算文件相关评论数量
-          }))
-          
-          // 更新PR数据，添加文件差异
-          setPullRequest(prev => prev ? { ...prev, files } : null)
-        }
-      }
-    } catch (err) {
-      console.error("获取文件差异失败:", err)
-      // 文件差异加载失败不影响页面展示，只记录错误
-      throw err // 重新抛出错误以便页面处理加载状态
-    }
-  }, [pullRequest])
+  const fetchPRFiles = useCallback(
+    async (prData?: PullRequest): Promise<void> => {
+      console.log("[usePullRequest] 开始获取PR文件差异")
 
-  // 更新PR
-  const updatePR = useCallback(async (updateData: UpdatePRData) => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 更新PR", { prId, updateData })
-
-      const response = await fetch(`/api/pull-requests/${prId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updateData),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "更新PR失败")
-      }
-
-      const data = await response.json()
-      console.log("usePullRequest: 更新成功", data)
-
-      // 更新本地状态
-      if (pullRequest) {
-        setPullRequest(prev => prev ? { ...prev, ...updateData } : null)
-      }
-
-      return true
-    } catch (err) {
-      console.error("更新PR失败:", err)
-      setError(err instanceof Error ? err.message : "更新PR失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest])
-
-  // 添加评论
-  const addComment = useCallback(async (commentData: AddCommentData) => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 添加评论", { prId, commentData })
-
-      const response = await fetch(`/api/pull-requests/${prId}/comments`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(commentData),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "添加评论失败")
-      }
-
-      const data = await response.json()
-      console.log("usePullRequest: 评论添加成功", data)
-
-      // 直接更新本地状态，无需重新获取整个PR数据
-      if (data.success && data.comment && pullRequest) {
-        const newComment: PRComment = {
-          id: data.comment.id,
-          content: data.comment.content,
-          author: data.comment.author,
-          createdAt: data.comment.createdAt,
-          updatedAt: data.comment.updatedAt,
-          type: data.comment.type || "GENERAL",
-          reactions: data.comment.reactions || { thumbsUp: 0, heart: 0 },
-          replies: data.comment.replies || [],
-          isEdited: false,
-          filePath: data.comment.filePath,
-          lineNumber: data.comment.lineNumber,
+      try {
+        // 如果没有传入prData，使用当前的pullRequest
+        const targetPR = prData || pullRequest
+        if (!targetPR) {
+          const warnMsg = "fetchPRFiles: 没有可用的PR数据"
+          console.warn(`[usePullRequest] ${warnMsg}`)
+          return Promise.resolve()
         }
 
-        setPullRequest(prev => prev ? {
-          ...prev,
-          comments: [...prev.comments, newComment],
-          commentCount: prev.commentCount + 1
-        } : null)
-      }
+        console.log(
+          `[usePullRequest] 请求文件差异: /api/repositories/${targetPR.repository.id}/diff?source=${targetPR.sourceBranch}&target=${targetPR.targetBranch}`,
+        )
+        const filesResponse = await fetch(
+          `/api/repositories/${targetPR.repository.id}/diff?source=${targetPR.sourceBranch}&target=${targetPR.targetBranch}`,
+        )
+        console.log(
+          `[usePullRequest] 文件差异响应状态: ${filesResponse.status}`,
+        )
 
-      return true
-    } catch (err) {
-      console.error("添加评论失败:", err)
-      setError(err instanceof Error ? err.message : "添加评论失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest])
+        if (filesResponse.ok) {
+          const filesData = await filesResponse.json()
+          console.log(`[usePullRequest] 文件差异响应数据:`, filesData)
 
-  // 添加审查者
-  const addReviewer = useCallback(async (reviewerData: AddReviewerData) => {
-    if (!prId) return false
+          if (filesData.success && filesData.data && filesData.data.diff) {
+            const files: DiffFile[] = filesData.data.diff.files.map(
+              (file: any) => ({
+                filename: file.filename,
+                status: file.status,
+                additions: file.additions,
+                deletions: file.deletions,
+                patch: file.patch,
+                comments: 0, // TODO: 从评论中计算文件相关评论数量
+              }),
+            )
 
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 添加审查者", { prId, reviewerData })
-
-      const response = await fetch(`/api/pull-requests/${prId}/reviewers`, {
-        method: "POST", 
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(reviewerData),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "添加审查者失败")
-      }
-
-      const data = await response.json()
-      console.log("usePullRequest: 审查者添加成功", data)
-
-      // 更新本地状态
-      if (pullRequest) {
-        const newReviewer: PRReviewer = {
-          id: reviewerData.reviewerId,
-          name: data.reviewer?.name,
-          email: data.reviewer?.email || "",
-          image: data.reviewer?.image,
-          status: "PENDING",
-        }
-        
-        setPullRequest(prev => prev ? {
-          ...prev,
-          reviewers: [...prev.reviewers, newReviewer]
-        } : null)
-      }
-
-      return true
-    } catch (err) {
-      console.error("添加审查者失败:", err)
-      setError(err instanceof Error ? err.message : "添加审查者失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest])
-
-  // 更新审查状态
-  const updateReviewStatus = useCallback(async (status: "APPROVED" | "REJECTED" | "COMMENTED") => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 更新审查状态", { prId, status })
-
-      const response = await fetch(`/api/pull-requests/${prId}/review`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "更新审查状态失败")
-      }
-
-      const data = await response.json()
-      console.log("usePullRequest: 审查状态更新成功", data)
-
-      // TODO: 更新本地审查者状态
-      await fetchPR() // 重新获取PR数据
-
-      return true
-    } catch (err) {
-      console.error("更新审查状态失败:", err)
-      setError(err instanceof Error ? err.message : "更新审查状态失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, fetchPR])
-
-  // 合并PR
-  const mergePR = useCallback(async () => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 合并PR", { prId })
-
-      const response = await fetch(`/api/pull-requests/${prId}/merge`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "合并PR失败")
-      }
-
-      const data = await response.json()
-      console.log("usePullRequest: PR合并成功", data)
-
-      // 更新本地状态
-      if (pullRequest) {
-        setPullRequest(prev => prev ? {
-          ...prev,
-          status: "MERGED",
-          mergedAt: new Date().toISOString()
-        } : null)
-      }
-
-      return true
-    } catch (err) {
-      console.error("合并PR失败:", err)
-      setError(err instanceof Error ? err.message : "合并PR失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest])
-
-  // 关闭PR
-  const closePR = useCallback(async () => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 关闭PR", { prId })
-
-      const success = await updatePR({ status: "CLOSED" })
-      
-      if (success && pullRequest) {
-        setPullRequest(prev => prev ? {
-          ...prev,
-          status: "CLOSED",
-          closedAt: new Date().toISOString()
-        } : null)
-      }
-
-      return success
-    } catch (err) {
-      console.error("关闭PR失败:", err)
-      setError(err instanceof Error ? err.message : "关闭PR失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest, updatePR])
-
-  // 重新打开PR
-  const reopenPR = useCallback(async () => {
-    if (!prId) return false
-
-    try {
-      setLoading(true)
-      setError(null)
-
-      console.log("usePullRequest: 重新打开PR", { prId })
-
-      const success = await updatePR({ status: "OPEN" })
-      
-      if (success && pullRequest) {
-        setPullRequest(prev => prev ? {
-          ...prev,
-          status: "OPEN",
-          closedAt: undefined
-        } : null)
-      }
-
-      return success
-    } catch (err) {
-      console.error("重新打开PR失败:", err)
-      setError(err instanceof Error ? err.message : "重新打开PR失败")
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [prId, pullRequest, updatePR])
-
-  // 获取文件评论
-  const fetchFileComments = useCallback(async () => {
-    if (!prId) return []
-
-    try {
-      const response = await fetch(`/api/pull-requests/${prId}/comments`)
-      
-      if (!response.ok) {
-        console.error("获取文件评论失败")
-        return []
-      }
-
-      const data = await response.json()
-      if (data.success && data.data && data.data.comments) {
-        // 只返回有文件路径的评论（文件级评论），并确保每个评论都有 reactions 字段
-        return data.data.comments
-          .filter((comment: PRComment) => comment.filePath)
-          .map((comment: PRComment) => ({
-            ...comment,
-            reactions: comment.reactions || { thumbsUp: 0, heart: 0 },
-            replies: (comment.replies || []).map(reply => ({
-              ...reply,
-              reactions: reply.reactions || { thumbsUp: 0, heart: 0 }
-            }))
-          }))
-      }
-      
-      return []
-    } catch (error) {
-      console.error("获取文件评论失败:", error)
-      return []
-    }
-  }, [prId])
-
-  // 添加文件评论到本地状态
-  const addFileCommentToLocal = useCallback((comment: PRComment) => {
-    if (!pullRequest) return
-    
-    setPullRequest(prev => prev ? {
-      ...prev,
-      comments: [...prev.comments, comment],
-      commentCount: prev.commentCount + 1
-    } : null)
-  }, [pullRequest])
-
-  // 添加回复到本地状态
-  const addReplyToLocal = useCallback((parentId: string, reply: PRComment) => {
-    if (!pullRequest) return
-    
-    setPullRequest(prev => prev ? {
-      ...prev,
-      comments: prev.comments.map(comment => {
-        if (comment.id === parentId) {
-          return {
-            ...comment,
-            replies: [...(comment.replies || []), reply]
+            // 更新PR数据，添加文件差异
+            setPullRequest(prev => {
+              const updated = prev ? { ...prev, files } : null
+              console.log(
+                `[usePullRequest] 更新PR数据，文件数量: ${files.length}`,
+              )
+              return updated
+            })
           }
         }
-        return comment
-      })
-    } : null)
-  }, [pullRequest])
+      } catch (err) {
+        console.error("[usePullRequest] 获取文件差异失败:", err)
+        // 文件差异加载失败不影响页面展示，只记录错误
+        throw err // 重新抛出错误以便页面处理加载状态
+      }
+    },
+    [pullRequest],
+  )
+
+  // 添加评论
+  const addComment = useCallback(
+    async (commentData: AddCommentData) => {
+      if (!pullRequest) {
+        throw new Error("PR数据不存在")
+      }
+
+      try {
+        const response = await fetch(
+          `/api/pull-requests/${pullRequest.id}/comments`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(commentData),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "添加评论失败")
+        }
+
+        const data = await response.json()
+
+        // 适配统一API响应格式 {success: true, data: comment}
+        let newComment: PRComment
+        if (data.success && data.data) {
+          newComment = data.data
+        } else {
+          // 兼容旧格式
+          newComment = data.comment
+        }
+
+        // 更新本地状态
+        setPullRequest(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            comments: [...prev.comments, newComment],
+          }
+        })
+
+        return newComment
+      } catch (err) {
+        console.error("添加评论失败:", err)
+        throw err instanceof Error ? err : new Error("添加评论失败")
+      }
+    },
+    [pullRequest],
+  )
+
+  // 更新PR
+  const updatePR = useCallback(
+    async (updateData: UpdatePRData) => {
+      if (!pullRequest) {
+        throw new Error("PR数据不存在")
+      }
+
+      try {
+        const response = await fetch(`/api/pull-requests/${pullRequest.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updateData),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "更新PR失败")
+        }
+
+        const data = await response.json()
+
+        // 适配统一API响应格式 {success: true, data: { pullRequest }}，兼容旧格式 { pullRequest }
+        let updatedPR: any
+        if (data.success && data.data) {
+          updatedPR = data.data.pullRequest ?? data.data
+        } else {
+          // 兼容旧格式
+          updatedPR = data.pullRequest
+        }
+
+        // 更新本地状态
+        setPullRequest(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            ...updatedPR,
+          }
+        })
+
+        return updatedPR
+      } catch (err) {
+        console.error("更新PR失败:", err)
+        throw err instanceof Error ? err : new Error("更新PR失败")
+      }
+    },
+    [pullRequest],
+  )
+
+  // 添加审查者
+  const addReviewer = useCallback(
+    async (reviewerData: AddReviewerData) => {
+      if (!pullRequest) {
+        throw new Error("PR数据不存在")
+      }
+
+      try {
+        const response = await fetch(
+          `/api/pull-requests/${pullRequest.id}/reviewers`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(reviewerData),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "添加审查者失败")
+        }
+
+        const data = await response.json()
+
+        // 适配统一API响应格式 {success: true, data: reviewer}
+        let newReviewer: PRReviewer
+        if (data.success && data.data) {
+          newReviewer = data.data
+        } else {
+          // 兼容旧格式
+          newReviewer = data.reviewer
+        }
+
+        // 更新本地状态
+        setPullRequest(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            reviewers: [...prev.reviewers, newReviewer],
+          }
+        })
+
+        return newReviewer
+      } catch (err) {
+        console.error("添加审查者失败:", err)
+        throw err instanceof Error ? err : new Error("添加审查者失败")
+      }
+    },
+    [pullRequest],
+  )
+
+  // 更新评论
+  const updateComment = useCallback(
+    async (commentId: string, content: string) => {
+      if (!pullRequest) {
+        throw new Error("PR数据不存在")
+      }
+
+      try {
+        const response = await fetch(
+          `/api/pull-requests/${pullRequest.id}/comments/${commentId}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ content }),
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "更新评论失败")
+        }
+
+        const data = await response.json()
+
+        // 适配统一API响应格式 {success: true, data: comment}
+        let updatedComment: PRComment
+        if (data.success && data.data) {
+          updatedComment = data.data
+        } else {
+          // 兼容旧格式
+          updatedComment = data.comment
+        }
+
+        // 更新本地状态
+        setPullRequest(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            comments: prev.comments.map(comment =>
+              comment.id === commentId
+                ? { ...comment, ...updatedComment, isEdited: true }
+                : comment,
+            ),
+          }
+        })
+
+        return updatedComment
+      } catch (err) {
+        console.error("更新评论失败:", err)
+        throw err instanceof Error ? err : new Error("更新评论失败")
+      }
+    },
+    [pullRequest],
+  )
+
+  // 删除评论
+  const deleteComment = useCallback(
+    async (commentId: string) => {
+      if (!pullRequest) {
+        throw new Error("PR数据不存在")
+      }
+
+      try {
+        const response = await fetch(
+          `/api/pull-requests/${pullRequest.id}/comments/${commentId}`,
+          {
+            method: "DELETE",
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "删除评论失败")
+        }
+
+        // 更新本地状态
+        setPullRequest(prev => {
+          if (!prev) return null
+          return {
+            ...prev,
+            comments: prev.comments.filter(comment => comment.id !== commentId),
+          }
+        })
+      } catch (err) {
+        console.error("删除评论失败:", err)
+        throw err instanceof Error ? err : new Error("删除评论失败")
+      }
+    },
+    [pullRequest],
+  )
 
   return {
     pullRequest,
     loading,
     error,
     fetchPR,
+    // 暴露文件差异加载方法，供页面调用
     fetchPRFiles,
-    updatePR,
     addComment,
+    updatePR,
     addReviewer,
-    updateReviewStatus,
-    mergePR,
-    fetchFileComments,
-    addFileCommentToLocal,
-    addReplyToLocal,
-    closePR,
-    reopenPR,
+    updateComment,
+    deleteComment,
+    // 统一刷新
+    refresh: fetchPR,
+    // 兼容 page.tsx 期望的便捷方法
+    updateReviewStatus: useCallback(
+      async (status: "OPEN" | "CLOSED" | "MERGED" | string) => {
+        // 仅支持 PR 状态，其他值直接返回 false
+        if (status !== "OPEN" && status !== "CLOSED" && status !== "MERGED") {
+          console.warn(
+            `[usePullRequest] updateReviewStatus 收到不支持的状态: ${status}，PUT /pull-requests 仅支持 OPEN/CLOSED/MERGED`,
+          )
+          return false
+        }
+        try {
+          await updatePR({ status: status as any })
+          return true
+        } catch {
+          return false
+        }
+      },
+      [updatePR],
+    ),
+    mergePR: useCallback(async () => {
+      try {
+        await updatePR({ status: "MERGED" })
+        return true
+      } catch {
+        return false
+      }
+    }, [updatePR]),
+    closePR: useCallback(async () => {
+      try {
+        await updatePR({ status: "CLOSED" })
+        return true
+      } catch {
+        return false
+      }
+    }, [updatePR]),
+    reopenPR: useCallback(async () => {
+      try {
+        await updatePR({ status: "OPEN" })
+        return true
+      } catch {
+        return false
+      }
+    }, [updatePR]),
+    // 兼容占位：page.tsx 若解构但未使用，避免 undefined
+    addFileCommentToLocal: () => {},
+    addReplyToLocal: () => {},
   }
 }

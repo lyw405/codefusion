@@ -1,41 +1,33 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import {
   Deployment,
+  DeploymentStats,
   DeploymentListParams,
   DeploymentListResponse,
   ExecuteDeploymentRequest,
   ExecuteDeploymentResponse,
   UpdateDeploymentRequest,
-  DeploymentStats,
-} from "@/types/deployment"
+} from "@/types"
 
-export function useDeployments(params: DeploymentListParams = {}) {
+export function useDeployments(initialParams: DeploymentListParams = {}) {
   const { data: session } = useSession()
   const [deployments, setDeployments] = useState<Deployment[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<DeploymentStats | null>(null)
   const [pagination, setPagination] = useState({
-    page: params.page || 1,
-    limit: params.limit || 10,
+    page: 1,
+    limit: 10,
     total: 0,
     totalPages: 0,
   })
-
-  console.log("useDeployments: Hook初始化", {
-    params,
-    hasSession: !!session?.user?.email,
-    deploymentsLength: deployments.length,
-  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [params, setParams] = useState<DeploymentListParams>(initialParams)
 
   // 获取部署列表
   const fetchDeployments = useCallback(
     async (searchParams?: DeploymentListParams) => {
-      // 开发环境绕过session检查
-      if (process.env.NODE_ENV === "development") {
-        console.log("开发环境：绕过session检查获取部署列表")
-      } else if (!session?.user?.email) {
+      if (!session?.user?.email) {
         console.log("useDeployments: 无session，跳过请求")
         return
       }
@@ -236,10 +228,7 @@ export function useDeployments(params: DeploymentListParams = {}) {
 
   // 获取部署统计信息
   const fetchStats = useCallback(async () => {
-    // 开发环境绕过session检查
-    if (process.env.NODE_ENV === "development") {
-      console.log("开发环境：绕过session检查获取统计信息")
-    } else if (!session?.user?.email) {
+    if (!session?.user?.email) {
       return
     }
 
@@ -282,7 +271,7 @@ export function useDeployments(params: DeploymentListParams = {}) {
 
   // 初始化
   useEffect(() => {
-    if (process.env.NODE_ENV === "development" || session?.user?.email) {
+    if (session?.user?.email) {
       console.log("useDeployments: 初始化加载数据")
       fetchDeployments(params)
       fetchStats()
@@ -291,7 +280,7 @@ export function useDeployments(params: DeploymentListParams = {}) {
 
   // 当参数变化时重新获取数据
   useEffect(() => {
-    if (process.env.NODE_ENV === "development" || session?.user?.email) {
+    if (session?.user?.email) {
       console.log("useDeployments: 参数变化，重新获取数据", params)
       fetchDeployments(params)
     }
