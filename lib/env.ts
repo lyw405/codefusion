@@ -15,9 +15,11 @@ export const env = createEnv({
     GITLAB_ID: z.string().optional(),
     GITLAB_SECRET: z.string().optional(),
     // AI Provider keys (optional)
-    OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
-    DEEPSEEK_API_KEY: z.string().optional(),
+    // AI Provider base URLs (optional, for third-party services)
+    ANTHROPIC_API_BASE_URL: z.string().url().optional(),
+    // AI Provider default models (optional)
+    ANTHROPIC_DEFAULT_MODEL: z.string().optional(),
   },
   client: {
     NEXT_PUBLIC_APP_URL: z.string().url().optional(),
@@ -31,9 +33,9 @@ export const env = createEnv({
     GITHUB_SECRET: process.env.GITHUB_SECRET,
     GITLAB_ID: process.env.GITLAB_ID,
     GITLAB_SECRET: process.env.GITLAB_SECRET,
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+    ANTHROPIC_API_BASE_URL: process.env.ANTHROPIC_API_BASE_URL,
+    ANTHROPIC_DEFAULT_MODEL: process.env.ANTHROPIC_DEFAULT_MODEL,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
   },
   skipValidation: !!process.env.SKIP_ENV_VALIDATION,

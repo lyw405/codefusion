@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { ApiError } from "./response"
+import { ProjectRole } from "./types"
 
 // 用户信息类型
 export interface AuthUser {
@@ -17,20 +18,11 @@ export interface AuthUser {
   image?: string | null
 }
 
-// 项目权限类型
-export type ProjectRole =
-  | "OWNER"
-  | "ADMIN"
-  | "DEVELOPER"
-  | "REVIEWER"
-  | "VIEWER"
-
 // 部署权限类型
 export type DeploymentPermission = "READ" | "WRITE" | "EXECUTE" | "DELETE"
 
 /**
  * 获取当前用户信息
- * 支持开发环境的降级处理
  */
 export async function getCurrentUser(): Promise<AuthUser> {
   const session = await getServerSession(authOptions)
@@ -41,26 +33,6 @@ export async function getCurrentUser(): Promise<AuthUser> {
       where: { email: session.user.email },
       select: { id: true, email: true, name: true, image: true },
     })
-  }
-
-  // 开发环境降级：如果没有找到用户，优先使用指定用户，然后使用第一个用户
-  if (!user && process.env.NODE_ENV === "development") {
-    // 优先使用nafek0405@163.com账户
-    user = await prisma.user.findUnique({
-      where: { email: "nafek0405@163.com" },
-      select: { id: true, email: true, name: true, image: true },
-    })
-
-    if (!user) {
-      // 如果找不到指定用户，使用任意第一个用户
-      user = await prisma.user.findFirst({
-        select: { id: true, email: true, name: true, image: true },
-      })
-    }
-
-    if (user) {
-      console.log("开发环境：使用默认用户", user.email)
-    }
   }
 
   if (!user) {
@@ -234,26 +206,16 @@ export function withDeploymentAccess<T extends any[], R>(
 }
 
 /**
- * 参数提取辅助函数
+ * 从路径参数中提取ID
  */
-export const extractParam = {
-  // 从路径参数中提取项目ID
-  projectId: (
-    request: NextRequest,
-    context: { params: { projectId: string } },
-  ) => context.params.projectId,
-
-  // 从路径参数中提取部署ID
-  deploymentId: (request: NextRequest, context: { params: { id: string } }) =>
-    context.params.id,
-
-  // 从查询参数中提取项目ID
-  projectIdFromQuery: (request: NextRequest) => {
-    const { searchParams } = new URL(request.url)
-    const projectId = searchParams.get("projectId")
-    if (!projectId) {
-      throw ApiError.badRequest("缺少项目ID参数")
-    }
-    return projectId
-  },
+export function extractParam(
+  request: NextRequest,
+  paramName: string,
+): string | null {
+  const url = new URL(request.url)
+  const params = url.pathname.split("/")
+  const paramIndex = params.indexOf(paramName)
+  return paramIndex !== -1 && paramIndex + 1 < params.length
+    ? params[paramIndex + 1]
+    : null
 }
