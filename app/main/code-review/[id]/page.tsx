@@ -49,10 +49,26 @@ export default function PRDetailPage({ params }: { params: { id: string } }) {
     closePR,
     reopenPR,
     addComment,
-    fetchFileComments,
     addFileCommentToLocal,
     addReplyToLocal,
   } = usePullRequest(params.id)
+  
+  // 实现获取文件评论的函数
+  const fetchFileComments = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/pull-requests/${params.id}/comments`)
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.data && result.data.comments) {
+          return result.data.comments
+        }
+      }
+      return []
+    } catch (error) {
+      console.error('获取文件评论失败:', error)
+      return []
+    }
+  }, [params.id])
   
   useEffect(() => {
     fetchPR()
@@ -340,6 +356,7 @@ export default function PRDetailPage({ params }: { params: { id: string } }) {
               </div>
               <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                 <span>
+                  {console.log(pullRequest)}
                   #{pullRequest.number} opened {formatTime(pullRequest.createdAt)} by {pullRequest.author.name || pullRequest.author.email}
                 </span>
               </div>

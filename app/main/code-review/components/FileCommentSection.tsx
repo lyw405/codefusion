@@ -48,6 +48,8 @@ interface FileCommentSectionProps {
   onReplyComment: (parentId: string, content: string) => void
   onReactComment: (commentId: string, reaction: "thumbsUp" | "heart") => void
   className?: string
+  // 可选：用于将 AI 返回的新版本行号映射为 Monaco 修改面板的可视行号
+  newToModifiedLine?: (newLine: number) => number | undefined
 }
 
 export function FileCommentSection({
@@ -57,6 +59,8 @@ export function FileCommentSection({
   onReplyComment,
   onReactComment,
   className = ""
+  ,
+  newToModifiedLine
 }: FileCommentSectionProps) {
   const [newComment, setNewComment] = useState("")
   const [commentType, setCommentType] = useState<"SUGGESTION" | "REVIEW" | "GENERAL">("GENERAL")
@@ -115,7 +119,10 @@ export function FileCommentSection({
                   {getCommentTypeBadge(comment.type)}
                   {comment.lineNumber && (
                     <Badge variant="outline" className="text-xs">
-                      Line {comment.lineNumber}
+                      {(() => {
+                        const mapped = newToModifiedLine?.(comment.lineNumber!)
+                        return mapped ? `Line ${mapped}` : `Line ${comment.lineNumber}`
+                      })()}
                     </Badge>
                   )}
                 </div>
@@ -137,7 +144,7 @@ export function FileCommentSection({
                 onClick={() => onReactComment(comment.id, "thumbsUp")}
               >
                 <ThumbsUp className="h-3 w-3" />
-                {comment.reactions.thumbsUp > 0 && comment.reactions.thumbsUp}
+                {(comment.reactions?.thumbsUp ?? 0) > 0 && (comment.reactions?.thumbsUp ?? 0)}
               </button>
               
               <button 
@@ -145,7 +152,7 @@ export function FileCommentSection({
                 onClick={() => onReactComment(comment.id, "heart")}
               >
                 <Heart className="h-3 w-3" />
-                {comment.reactions.heart > 0 && comment.reactions.heart}
+                {(comment.reactions?.heart ?? 0) > 0 && (comment.reactions?.heart ?? 0)}
               </button>
               
               {!isReply && (

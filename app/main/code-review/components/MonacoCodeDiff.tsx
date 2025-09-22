@@ -117,6 +117,29 @@ export function MonacoCodeDiff({
         onResetHeight={resetHeight}
       />
 
+      {/* 构建 new(目标分支) 行号 → Monaco 修改面板行号映射 */}
+      {(() => {
+        const mapping = new Map<number, number>()
+        let modifiedIndex = 0
+        fileDiff.chunks.forEach(chunk => {
+          chunk.lines.forEach(line => {
+            if (line.type === 'context') {
+              modifiedIndex += 1
+              if (line.lineNumber?.new) mapping.set(line.lineNumber.new, modifiedIndex)
+            } else if (line.type === 'addition') {
+              modifiedIndex += 1
+              if (line.lineNumber?.new) mapping.set(line.lineNumber.new, modifiedIndex)
+            }
+          })
+        })
+        // 暴露到 window，供同文件评论组件消费
+        if (typeof window !== 'undefined') {
+          ;(window as any).__newToModifiedLineMap = (window as any).__newToModifiedLineMap || {}
+          ;(window as any).__newToModifiedLineMap[fileDiff.filename] = (newLine: number) => mapping.get(newLine)
+        }
+        return null
+      })()}
+
       {/* Monaco Editor */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
         <SafeDiffEditor

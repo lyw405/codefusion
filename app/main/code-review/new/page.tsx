@@ -1,37 +1,40 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MarkdownPreview } from "../components/MarkdownPreview"
-import { CodeDiffViewer } from "../components/CodeDiffViewer"
-import { type DiffFile } from "../types/diff"
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select"
+// 移除未使用的 Card 相关组件导入
+import { 
+  Alert, 
+  AlertDescription 
+} from "@/components/ui/alert"
+import { 
+  Badge 
+} from "@/components/ui/badge"
 import { 
   GitPullRequest, 
-  Plus,
-  Users,
-  GitBranch,
-  FileText,
-  Code,
-  Check,
-  Settings,
-  Star,
+  GitBranch, 
+  FileText, 
+  Code, 
+  Check, 
   Loader2,
-  AlertCircle,
-  Edit,
-  Eye
+  AlertCircle
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { usePRData } from "@/hooks/usePRData"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { CodeDiffViewer } from "../components/CodeDiffViewer"
 
 export default function NewPRPage() {
+  const router = useRouter()
   const [selectedProject, setSelectedProject] = useState("")
   const [selectedRepository, setSelectedRepository] = useState("")
   const [title, setTitle] = useState("")
@@ -68,130 +71,52 @@ export default function NewPRPage() {
   // 获取当前项目的审查者列表
   const currentReviewers = selectedProject ? getProjectReviewers(selectedProject) : []
 
-  // 处理项目选择变化
+  // 当项目改变时重置相关状态
   const handleProjectChange = (projectId: string) => {
     setSelectedProject(projectId)
     setSelectedRepository("")
     setSourceBranch("")
     setTargetBranch("main")
     setSelectedReviewers([])
-    setTitle("")
-    setDescription("")
-    setHasAutoFilled(false)
+    setSelectedLabels([])
   }
 
-  // 处理仓库选择变化
+  // 当仓库改变时获取分支列表
   const handleRepositoryChange = (repositoryId: string) => {
     setSelectedRepository(repositoryId)
     setSourceBranch("")
-    setTitle("")
-    setDescription("")
-    setHasAutoFilled(false)
-    
-    const repository = currentRepositories.find(repo => repo.id === repositoryId)
-    setTargetBranch(repository?.defaultBranch || "main")
+    setTargetBranch("main")
     fetchBranches(repositoryId)
   }
 
-  // 处理源分支选择变化
-  const handleSourceBranchChange = (branchName: string) => {
-    setSourceBranch(branchName)
-    setHasAutoFilled(false)
+  // 当源分支改变时获取分支差异
+  const handleSourceBranchChange = (branch: string) => {
+    setSourceBranch(branch)
     
-    // 立即尝试填充内容
-    if (branchName && branches.length > 0) {
-      const sourceCommit = getLatestCommitFromBranch(branchName)
-      if (sourceCommit) {
-        setTitle(sourceCommit.message)
-        
-        const formattedDescription = `## 功能概述
-
-${sourceCommit.message}
-
-## 主要变更
-
-- 请在此处描述具体变更内容
-
-## 提交信息
-
-**作者**: ${sourceCommit.author}
-**日期**: ${new Date(sourceCommit.date).toLocaleString()}
-**提交哈希**: ${sourceCommit.shortHash}
-
-## 测试
-
-- [ ] 单元测试通过
-- [ ] 集成测试通过
-- [ ] E2E测试通过
-
-## 相关Issue
-
-<!-- 请关联相关的Issue -->`
-        
-        setDescription(formattedDescription)
-        setHasAutoFilled(true)
-      }
+    // 如果目标分支已选择，获取分支差异
+    if (targetBranch && selectedRepository) {
+      fetchBranchDiff(selectedRepository, branch, targetBranch)
     }
   }
 
-  // 监听仓库变化，自动获取分支
+  // 当目标分支改变时获取分支差异
   useEffect(() => {
-    if (selectedRepository) {
-      fetchBranches(selectedRepository)
-    }
-  }, [selectedRepository, fetchBranches])
-
-  // 监听分支变化，自动获取差异和设置标题描述
-  useEffect(() => {
-    if (selectedRepository && sourceBranch && targetBranch) {
+    if (sourceBranch && targetBranch && selectedRepository) {
       fetchBranchDiff(selectedRepository, sourceBranch, targetBranch)
     }
-  }, [selectedRepository, sourceBranch, targetBranch, fetchBranchDiff])
+  }, [sourceBranch, targetBranch, selectedRepository, fetchBranchDiff])
 
-  // 监听源分支变化，自动填充标题和描述
+  // 自动填充标题和描述
   useEffect(() => {
-    if (sourceBranch && branches.length > 0 && selectedRepository) {
-      const sourceCommit = getLatestCommitFromBranch(sourceBranch)
-      if (sourceCommit) {
-        // 总是使用最新的源分支提交信息更新标题
-        setTitle(sourceCommit.message)
-        
-        // 生成更详细的描述
-        const formattedDescription = `## 功能概述
-
-${sourceCommit.message}
-
-## 主要变更
-
-- 请在此处描述具体变更内容
-
-## 提交信息
-
-**作者**: ${sourceCommit.author}
-**日期**: ${new Date(sourceCommit.date).toLocaleString()}
-**提交哈希**: ${sourceCommit.shortHash}
-
-`
-        
-        setDescription(formattedDescription)
+    if (sourceBranch && !hasAutoFilled) {
+      const commit = getLatestCommitFromBranch(sourceBranch)
+      if (commit) {
+        setTitle(commit.message)
+        setDescription(`This PR includes changes from commit: ${commit.hash.substring(0, 7)}\n\n${commit.message}`)
         setHasAutoFilled(true)
       }
-    } else if (!sourceBranch) {
-      // 如果没有选择源分支，清空标题和描述
-      setTitle("")
-      setDescription("")
-      setHasAutoFilled(false)
     }
-  }, [sourceBranch, branches, selectedRepository, getLatestCommitFromBranch])
-
-  const mockLabels = [
-    { name: "feature", color: "bg-blue-500", description: "新功能" },
-    { name: "bugfix", color: "bg-red-500", description: "错误修复" },
-    { name: "enhancement", color: "bg-green-500", description: "功能增强" },
-    { name: "documentation", color: "bg-yellow-500", description: "文档更新" },
-    { name: "performance", color: "bg-purple-500", description: "性能优化" },
-    { name: "security", color: "bg-orange-500", description: "安全相关" }
-  ]
+  }, [sourceBranch, hasAutoFilled, getLatestCommitFromBranch])
 
   const handleCreatePR = async () => {
     try {
@@ -205,7 +130,7 @@ ${sourceCommit.message}
         repositoryId: selectedRepository,
         reviewers: selectedReviewers,
         labels: selectedLabels,
-        isDraft: false, // 或者根据用户选择
+        isDraft: false,
       }
       
       const response = await fetch('/api/pull-requests', {
@@ -238,7 +163,7 @@ ${sourceCommit.message}
       }
       
       // 导航到PR详情页面
-      window.location.href = `/main/code-review/${pullRequest.id}`
+      router.push(`/main/code-review/${pullRequest.id}`)
     } catch (error) {
       console.error('创建PR失败:', error)
       alert(error instanceof Error ? error.message : '创建PR失败')
@@ -288,11 +213,11 @@ ${sourceCommit.message}
       }
       
       if (!pullRequest || !pullRequest.id) {
-        throw new Error('创庺的草稿PR数据格式错误')
+        throw new Error('创建的草稿PR数据格式错误')
       }
       
       // 导航到PR详情页面
-      window.location.href = `/main/code-review/${pullRequest.id}`
+      router.push(`/main/code-review/${pullRequest.id}`)
     } catch (error) {
       console.error('创建草稿PR失败:', error)
       alert(error instanceof Error ? error.message : '创建草稿PR失败')
@@ -316,6 +241,15 @@ ${sourceCommit.message}
         : [...prev, labelName]
     )
   }
+
+  // 预定义的标签
+  const predefinedLabels = [
+    { name: "bug", color: "bg-red-500", description: "Something isn't working" },
+    { name: "enhancement", color: "bg-blue-500", description: "New feature or request" },
+    { name: "documentation", color: "bg-yellow-500", description: "Improvements or additions to documentation" },
+    { name: "performance", color: "bg-purple-500", description: "Performance improvements" },
+    { name: "security", color: "bg-orange-500", description: "Security related changes" }
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -394,10 +328,8 @@ ${sourceCommit.message}
                     ) : (
                       currentRepositories.map(repo => (
                         <SelectItem key={repo.id} value={repo.id}>
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-4 h-4 bg-gray-100 dark:bg-gray-800 rounded">
-                              <Code className="h-3 w-3 text-gray-600 dark:text-gray-400" />
-                            </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
                             <div className="flex flex-col">
                               <span className="font-medium">{repo.name}</span>
                               <span className="text-xs text-muted-foreground">{repo.provider}</span>
@@ -517,12 +449,27 @@ ${sourceCommit.message}
                         These branches can be automatically merged.
                       </p>
                     </div>
-                    {diffData && (
+                    {(loadingDiff || diffData) && (
                       <div className="text-sm text-green-700 dark:text-green-300">
-                        {diffData.diff.stats.filesChanged} file{diffData.diff.stats.filesChanged !== 1 ? 's' : ''} changed
+                        {loadingDiff ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Calculating changes...</span>
+                          </div>
+                        ) : diffData ? (
+                          `${diffData.diff.stats.filesChanged} file${diffData.diff.stats.filesChanged !== 1 ? 's' : ''} changed`
+                        ) : null}
                       </div>
                     )}
                   </div>
+                )}
+                
+                {/* 差异错误信息 */}
+                {diffError && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{diffError}</AlertDescription>
+                  </Alert>
                 )}
               </div>
             ) : (
@@ -618,10 +565,10 @@ ${sourceCommit.message}
                             <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
                               {getLatestCommitFromBranch(sourceBranch)?.message}
                             </p>
-                            <div className="flex items-center gap-4 text-xs text-blue-600 dark:text-blue-400">
-                              <span>by {getLatestCommitFromBranch(sourceBranch)?.author}</span>
-                              <span>{getLatestCommitFromBranch(sourceBranch)?.shortHash}</span>
-                              <span>{new Date(getLatestCommitFromBranch(sourceBranch)?.date || '').toLocaleString()}</span>
+                            <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                              <span>{getLatestCommitFromBranch(sourceBranch)?.author}</span>
+                              <span>•</span>
+                              <span>{new Date(getLatestCommitFromBranch(sourceBranch)?.date || "").toLocaleString()}</span>
                             </div>
                           </div>
                         </div>
@@ -629,318 +576,202 @@ ${sourceCommit.message}
                     )}
                   </div>
                 </div>
-                
+
                 {/* PR 描述卡片 */}
                 <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Edit className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                          Description
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          Markdown supported
-                        </div>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                        Description
+                      </h3>
                     </div>
                   </div>
-                  
                   <div className="p-6">
-                    <Tabs defaultValue="write" className="w-full">
-                      <TabsList className="h-9 bg-gray-100 dark:bg-gray-800 p-1 mb-4">
-                        <TabsTrigger value="write" className="h-7 px-4 text-sm font-medium">
-                          Write
-                        </TabsTrigger>
-                        <TabsTrigger value="preview" className="h-7 px-4 text-sm font-medium">
-                          Preview
-                        </TabsTrigger>
-                      </TabsList>
-                      
-                      <TabsContent value="write" className="mt-0">
-                        <div className="relative">
-                          <Textarea
-                            placeholder="Describe your changes in detail. What problem does this solve? How did you implement it? Are there any breaking changes?"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={15}
-                            className="min-h-[350px] resize-none border-gray-300 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500 font-mono text-sm"
-                          />
-                          <div className="absolute bottom-3 right-3 text-xs text-gray-400">
-                            {description.length} characters
-                          </div>
-                        </div>
-                      </TabsContent>
-                      
-                      <TabsContent value="preview" className="mt-0">
-                        <div className="min-h-[350px] p-6 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                          {description ? (
-                            <MarkdownPreview content={description} />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center">
-                              <div className="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-                                <Eye className="h-8 w-8 text-gray-400" />
-                              </div>
-                              <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">
-                                Nothing to preview
-                              </p>
-                              <p className="text-gray-400 dark:text-gray-500 text-xs">
-                                Write something in the description to see a preview
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </TabsContent>
-                    </Tabs>
+                    <Textarea
+                      placeholder="Add a description for your pull request..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={6}
+                      className="border-gray-300 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:border-blue-500"
+                    />
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                      Please include a summary of the changes and any relevant context.
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* 右侧栏 - 固定高度和滚动 */}
-              <div className="xl:col-span-1">
-                <div className="sticky top-6 space-y-4 max-h-[calc(100vh-8rem)] overflow-hidden">
-                  {/* 审查者卡片 */}
-                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <Users className="h-4 w-4" />
-                        Reviewers
-                        {selectedReviewers.length > 0 && (
-                          <Badge variant="secondary" className="ml-auto text-xs">
-                            {selectedReviewers.length}
-                          </Badge>
-                        )}
-                      </h3>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      <div className="p-4">
-                        {!selectedProject ? (
-                          <div className="text-center py-6">
-                            <Users className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Select a project first
-                            </p>
-                          </div>
-                        ) : currentReviewers.length === 0 ? (
-                          <div className="text-center py-6">
-                            <Users className="h-8 w-8 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              No reviewers available
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {currentReviewers.map((reviewer) => (
-                              <div 
-                                key={reviewer.id}
-                                className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
-                                  selectedReviewers.includes(reviewer.id)
-                                    ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
-                                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-600'
-                                }`}
-                                onClick={() => toggleReviewer(reviewer.id)}
-                              >
-                                <Avatar className="h-8 w-8 ring-2 ring-white dark:ring-gray-800 flex-shrink-0">
-                                  <AvatarFallback className="text-xs font-medium bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                                    {reviewer.name?.[0] || reviewer.email[0]}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                                    {reviewer.name || reviewer.email}
-                                  </p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate capitalize">
-                                    {reviewer.role.toLowerCase()}
-                                  </p>
-                                </div>
-                                {selectedReviewers.includes(reviewer.id) && (
-                                  <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                    <Check className="h-3 w-3 text-white" />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
+              {/* 右侧侧边栏 */}
+              <div className="space-y-6">
+                {/* 审查者 */}
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                      Reviewers
+                    </h3>
                   </div>
-
-                  {/* 标签卡片 */}
-                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <Star className="h-4 w-4" />
-                        Labels
-                        {selectedLabels.length > 0 && (
-                          <Badge variant="secondary" className="ml-auto text-xs">
-                            {selectedLabels.length}
-                          </Badge>
-                        )}
-                      </h3>
-                    </div>
-                    <div className="p-4">
-                        <div className="space-y-2">
-                          {mockLabels.map((label) => (
-                            <div 
-                              key={label.name}
-                              className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
-                                selectedLabels.includes(label.name)
-                                  ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800 shadow-sm'
-                                  : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-600'
-                              }`}
-                              onClick={() => toggleLabel(label.name)}
-                            >
-                              <div className={`w-4 h-4 rounded-full ${label.color} ring-2 ring-white dark:ring-gray-800 flex-shrink-0`} />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                  {label.name}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {label.description}
-                                </p>
-                              </div>
-                              {selectedLabels.includes(label.name) && (
-                                <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <Check className="h-3 w-3 text-white" />
-                                </div>
-                              )}
+                  <div className="p-6">
+                    {currentReviewers.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No reviewers available for this project.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {currentReviewers.map(member => (
+                          <div
+                            key={member.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                              selectedReviewers.includes(member.id)
+                                ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                                : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                            }`}
+                            onClick={() => toggleReviewer(member.id)}
+                          >
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium text-sm">
+                              {member.name?.[0] || member.email[0]}
                             </div>
-                          ))}  
-                        </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {member.name || member.email}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {member.email}
+                              </p>
+                            </div>
+                            {selectedReviewers.includes(member.id) && (
+                              <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                                <Check className="h-3 w-3 text-white" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 标签 */}
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                      Labels
+                    </h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="flex flex-wrap gap-2">
+                      {predefinedLabels.map(label => (
+                        <button
+                          key={label.name}
+                          onClick={() => toggleLabel(label.name)}
+                          className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                            selectedLabels.includes(label.name)
+                              ? `${label.color} text-white`
+                              : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          <span>{label.name}</span>
+                        </button>
+                      ))}
                     </div>
+                    <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                      Select labels to categorize your pull request.
+                    </p>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            /* Files changed 页面 */
-            <div className="space-y-6">
-              {sourceBranch && targetBranch ? (
-                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
-                  <div className="border-b border-gray-200 dark:border-gray-700 p-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        {loadingDiff ? "Loading changes..." : "Files changed"}
-                      </h3>
-                      {diffData && (
-                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                          <span>
-                            {diffData.diff.stats.filesChanged} file{diffData.diff.stats.filesChanged !== 1 ? 's' : ''}
-                          </span>
-                          <span className="text-green-600 dark:text-green-400">
-                            +{diffData.diff.stats.insertions}
-                          </span>
-                          <span className="text-red-600 dark:text-red-400">
-                            -{diffData.diff.stats.deletions}
-                          </span>
-                        </div>
-                      )}
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm overflow-hidden">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                  Files changed
+                </h3>
+                
+                {loadingDiff ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        Loading file changes...
+                      </p>
                     </div>
                   </div>
-                  
-                  <div className="p-6">
-                    {loadingDiff ? (
-                      <div className="text-center py-20">
-                        <Loader2 className="h-8 w-8 mx-auto mb-3 animate-spin text-blue-500" />
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          Analyzing code changes...
-                        </p>
-                      </div>
-                    ) : diffError ? (
-                      <div className="text-center py-20">
-                        <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-red-100 dark:bg-red-900/20 rounded-full">
-                          <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                        </div>
-                        <p className="text-sm text-gray-900 dark:text-gray-100 mb-2">
-                          Unable to load changes
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-                          {diffError}
-                        </p>
-                        <Button 
-                          onClick={() => fetchBranchDiff(selectedRepository, sourceBranch, targetBranch)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Try again
-                        </Button>
-                      </div>
-                    ) : diffData && diffData.diff.files.length > 0 ? (
-                      <CodeDiffViewer
-                        files={diffData.diff.files.map(file => ({
-                          filename: file.filename,
-                          status: file.status,
-                          additions: file.additions,
-                          deletions: file.deletions,
-                          patch: file.patch,
-                        }))}
-                        title=""
-                        description=""
-                        showStats={false}
-                        className="border-0 shadow-none bg-transparent"
-                      />
-                    ) : (
-                      <div className="text-center py-20">
-                        <div className="flex items-center justify-center w-12 h-12 mx-auto mb-3 bg-green-100 dark:bg-green-900/20 rounded-full">
-                          <Check className="h-6 w-6 text-green-600 dark:text-green-400" />
-                        </div>
-                        <p className="text-sm text-gray-900 dark:text-gray-100 mb-2">
-                          No changes detected
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          These branches are identical
-                        </p>
-                      </div>
-                    )}
+                ) : diffError ? (
+                  <div className="text-center py-12">
+                    <AlertCircle className="h-12 w-12 mx-auto text-red-500" />
+                    <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">
+                      Error loading changes
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                      {diffError}
+                    </p>
+                    <Button 
+                      onClick={() => fetchBranchDiff(selectedRepository, sourceBranch, targetBranch)}
+                      className="mt-4"
+                    >
+                      Retry
+                    </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
-                  <div className="text-center py-20 text-gray-500 dark:text-gray-400">
-                    <Code className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">Select source and target branches to view file changes</p>
+                ) : diffData && diffData.diff.files.length > 0 ? (
+                  <CodeDiffViewer 
+                    files={diffData.diff.files}
+                    title="Files changed"
+                    description="Review and compare file changes"
+                    showStats={true}
+                  />
+                ) : (
+                  <div className="text-center py-12">
+                    <FileText className="h-12 w-12 mx-auto text-gray-400" />
+                    <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">
+                      No changes found
+                    </h3>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                      There are no differences between these branches.
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>
 
-
-
-        {/* GitHub风格的底部操作栏 */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm mt-6">
-          <div className="p-6">
+        {/* 底部操作按钮 */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-end gap-3">
-              <Button 
+              <Button
                 variant="outline"
+                onClick={() => router.back()}
+                disabled={isCreating || isCreatingDraft}
+              >
+                Cancel
+              </Button>
+              <Button
                 onClick={handleCreateDraftPR}
-                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
+                disabled={!title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
+                variant="secondary"
               >
                 {isCreatingDraft ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    创建中...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating Draft...
                   </>
                 ) : (
-                  'Create draft pull request'
+                  "Create Draft"
                 )}
               </Button>
-              <Button 
+              <Button
                 onClick={handleCreatePR}
-                disabled={!selectedProject || !selectedRepository || !title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
-                className="bg-green-600 hover:bg-green-700 dark:bg-green-600 dark:hover:bg-green-700"
+                disabled={!title || !sourceBranch || !targetBranch || isCreating || isCreatingDraft}
               >
                 {isCreating ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    创建中...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
                   </>
                 ) : (
-                  'Create pull request'
+                  "Create Pull Request"
                 )}
               </Button>
             </div>

@@ -267,6 +267,11 @@ export function CodeDiffViewer({
                           onAddComment={onAddFileComment}
                           onReplyComment={onReplyFileComment}
                           onReactComment={onReactFileComment}
+                          newToModifiedLine={(newLine: number) => {
+                            if (typeof window === 'undefined') return undefined
+                            const map = (window as any).__newToModifiedLineMap?.[file.filename]
+                            return typeof map === 'function' ? map(newLine) : undefined
+                          }}
                         />
                       </div>
                     )}
