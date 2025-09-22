@@ -30,23 +30,17 @@ async function main() {
     }),
     prisma.user.create({
       data: {
-        name: "王五",
-        email: "wangwu@example.com",
-        image: "https://api.dicebear.com/7.x/avataaars/svg?seed=wangwu",
-      },
-    }),
-    prisma.user.create({
-      data: {
-        name: "赵六",
-        email: "zhaoliu@example.com",
-        image: "https://api.dicebear.com/7.x/avataaars/svg?seed=zhaoliu",
-      },
-    }),
-    prisma.user.create({
-      data: {
         name: "钱七",
         email: "qianqi@example.com",
         image: "https://api.dicebear.com/7.x/avataaars/svg?seed=qianqi",
+      },
+    }),
+    // 创建AI系统用户
+    prisma.user.create({
+      data: {
+        name: "AI代码审查员",
+        email: "ai-reviewer@codefusion.local",
+        image: "https://api.dicebear.com/7.x/bottts/svg?seed=ai-reviewer",
       },
     }),
   ])
