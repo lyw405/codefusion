@@ -17,21 +17,12 @@ export default function MainLayout({
   const { status } = useSession()
 
   useEffect(() => {
-    // 开发环境：绕过session检查
-    if (process.env.NODE_ENV === "development") {
-      console.log("开发环境：绕过main layout的session检查")
-      return
-    }
-    
     if (status === "unauthenticated") {
       redirect("/login")
     }
   }, [status])
 
-  // 开发环境：绕过loading检查
-  if (process.env.NODE_ENV === "development") {
-    // 在开发环境下直接渲染内容
-  } else if (status === "loading") {
+  if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -67,18 +58,8 @@ export default function MainLayout({
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* 开发环境显示模拟的用户菜单 */}
-            {process.env.NODE_ENV === "development" ? (
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-muted-foreground">开发模式</div>
-                <ThemeToggle />
-              </div>
-            ) : (
-              <>
-                <ThemeToggle />
-                <UserMenu />
-              </>
-            )}
+            <ThemeToggle />
+            <UserMenu />
           </div>
         </div>
       </header>
