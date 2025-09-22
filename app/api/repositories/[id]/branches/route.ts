@@ -5,6 +5,10 @@ import {
   cloneRepository,
   getRepositoryBranchesWithCommits,
 } from "@/lib/utils/git"
+import { exec } from "child_process"
+import { promisify } from "util"
+
+const execAsync = promisify(exec)
 
 // 分支信息接口
 interface Branch {
@@ -78,6 +82,13 @@ export const GET = handleApiError(
           console.error("仓库克隆失败:", error)
           throw ApiError.internal("仓库克隆失败，无法获取分支列表")
         }
+      }
+
+      // 获取真实的分支信息前，先fetch最新的远程代码
+      try {
+        await execAsync("git fetch origin", { cwd: localPath })
+      } catch (error) {
+        console.warn("获取远程分支信息失败:", error)
       }
 
       // 获取真实的分支信息

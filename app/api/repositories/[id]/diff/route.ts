@@ -1,12 +1,11 @@
 import { NextRequest } from "next/server"
 import { prisma } from "@/lib/db"
 import { getBranchDiff, cloneRepository } from "@/lib/utils/git"
-import {
-  successResponse,
-  handleApiError,
-  withAuth,
-  ApiError,
-} from "@/lib/api"
+import { successResponse, handleApiError, withAuth, ApiError } from "@/lib/api"
+import { exec } from "child_process"
+import { promisify } from "util"
+
+const execAsync = promisify(exec)
 
 // 获取两个分支间的差异
 export const GET = handleApiError(
@@ -84,9 +83,18 @@ export const GET = handleApiError(
         throw ApiError.internal("仓库本地路径为空")
       }
 
+      // 获取分支差异前，先fetch最新的远程代码
+      try {
+        await execAsync("git fetch origin", { cwd: localPath })
+      } catch (error) {
+        console.warn("获取远程代码失败:", error)
+      }
+
       // 获取分支差异
       try {
-        console.log(`获取分支差异: ${sourceBranch} -> ${targetBranch}, 路径: ${localPath}`)
+        console.log(
+          `获取分支差异: ${sourceBranch} -> ${targetBranch}, 路径: ${localPath}`,
+        )
         const diff = await getBranchDiff(localPath, sourceBranch, targetBranch)
 
         const result = {
@@ -103,23 +111,27 @@ export const GET = handleApiError(
             files: diff.files,
           },
         }
-        
-        console.log(`分支差异获取成功: ${diff.diffStat.filesChanged} 个文件变更`)
+
+        console.log(
+          `分支差异获取成功: ${diff.diffStat.filesChanged} 个文件变更`,
+        )
         return successResponse(result, "分支差异获取成功")
       } catch (error) {
         console.error("获取分支差异失败:", error)
-        
+
         // 如果是分支不存在的错误，提供更友好的错误信息
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        if (errorMessage.includes("not found") || errorMessage.includes("does not exist")) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error)
+        if (
+          errorMessage.includes("not found") ||
+          errorMessage.includes("does not exist")
+        ) {
           throw ApiError.badRequest(
             `分支不存在: 源分支 '${sourceBranch}' 或目标分支 '${targetBranch}' 在仓库中不存在`,
           )
         }
-        
-        throw ApiError.internal(
-          `获取分支差异失败: ${errorMessage}`,
-        )
+
+        throw ApiError.internal(`获取分支差异失败: ${errorMessage}`)
       }
     },
   ),
